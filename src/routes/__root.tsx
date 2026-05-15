@@ -81,6 +81,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "PDF Editify — Intelligent document editing" },
+      { name: "description", content: "PDF Perfect is a modern, AI-powered SaaS web application for comprehensive PDF editing and management." },
+      { property: "og:description", content: "PDF Perfect is a modern, AI-powered SaaS web application for comprehensive PDF editing and management." },
+      { name: "twitter:description", content: "PDF Perfect is a modern, AI-powered SaaS web application for comprehensive PDF editing and management." },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
