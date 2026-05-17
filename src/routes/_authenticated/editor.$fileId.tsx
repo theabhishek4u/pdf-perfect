@@ -25,12 +25,15 @@ export const Route = createFileRoute("/_authenticated/editor/$fileId")({
   head: () => ({ meta: [{ title: "Editor — PDF Editify" }] }),
 });
 
-type Tool = "select" | "text" | "highlight" | "sign";
+type Tool = "select" | "text" | "highlight" | "sign" | "edit";
+
+type TextBox = { x: number; y: number; w: number; h: number; size: number; str: string };
 
 type Annotation =
   | { type: "text"; page: number; x: number; y: number; text: string; size: number }
   | { type: "highlight"; page: number; x: number; y: number; w: number; h: number }
-  | { type: "image"; page: number; x: number; y: number; w: number; h: number; dataUrl: string };
+  | { type: "image"; page: number; x: number; y: number; w: number; h: number; dataUrl: string }
+  | { type: "edit"; page: number; x: number; y: number; w: number; h: number; size: number; text: string };
 
 function EditorPage() {
   const { fileId } = Route.useParams();
