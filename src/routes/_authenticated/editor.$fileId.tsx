@@ -209,6 +209,24 @@ function EditorPage() {
           width: ann.w * sx,
           height: ann.h * sy,
         });
+      } else if (ann.type === "edit") {
+        // Cover original text with white, then draw new text
+        const pad = 2;
+        page.drawRectangle({
+          x: ann.x * sx - pad,
+          y: ph - (ann.y + ann.h) * sy - pad,
+          width: ann.w * sx + pad * 2,
+          height: ann.h * sy + pad * 2,
+          color: rgb(1, 1, 1),
+        });
+        const size = ann.size * sy;
+        page.drawText(ann.text, {
+          x: ann.x * sx,
+          y: ph - ann.y * sy - size,
+          size,
+          font,
+          color: rgb(0, 0, 0),
+        });
       }
     }
     return await doc.save();
