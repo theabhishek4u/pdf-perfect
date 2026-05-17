@@ -17,6 +17,7 @@ import {
   RotateCw,
   Trash2,
   Loader2,
+  Edit3,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/editor/$fileId")({
@@ -24,12 +25,15 @@ export const Route = createFileRoute("/_authenticated/editor/$fileId")({
   head: () => ({ meta: [{ title: "Editor — PDF Editify" }] }),
 });
 
-type Tool = "select" | "text" | "highlight" | "sign";
+type Tool = "select" | "text" | "highlight" | "sign" | "edit";
+
+type TextBox = { x: number; y: number; w: number; h: number; size: number; str: string };
 
 type Annotation =
   | { type: "text"; page: number; x: number; y: number; text: string; size: number }
   | { type: "highlight"; page: number; x: number; y: number; w: number; h: number }
-  | { type: "image"; page: number; x: number; y: number; w: number; h: number; dataUrl: string };
+  | { type: "image"; page: number; x: number; y: number; w: number; h: number; dataUrl: string }
+  | { type: "edit"; page: number; x: number; y: number; w: number; h: number; size: number; text: string };
 
 function EditorPage() {
   const { fileId } = Route.useParams();
@@ -47,6 +51,7 @@ function EditorPage() {
   const [pageRotations, setPageRotations] = useState<number[]>([]);
   const [showSig, setShowSig] = useState(false);
   const [pendingSig, setPendingSig] = useState<string | null>(null);
+  const [pageTextBoxes, setPageTextBoxes] = useState<TextBox[][]>([]);
 
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -83,6 +88,7 @@ function EditorPage() {
     const doc = await pdfjsLib.getDocument({ data: buf.slice() }).promise;
     const imgs: string[] = [];
     const sizes: { w: number; h: number }[] = [];
+    const allBoxes: TextBox[][] = [];
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i);
       const viewport = page.getViewport({ scale: 1.5 });
@@ -93,9 +99,24 @@ function EditorPage() {
       await page.render({ canvasContext: ctx, viewport, canvas }).promise;
       imgs.push(canvas.toDataURL("image/png"));
       sizes.push({ w: viewport.width, h: viewport.height });
+
+      // Extract text positions in canvas pixel coords
+      const tc = await page.getTextContent();
+      const boxes: TextBox[] = [];
+      for (const it of tc.items as any[]) {
+        if (!it.str || !it.str.trim()) continue;
+        const tx = pdfjsLib.Util.transform(viewport.transform, it.transform);
+        const fontHeight = Math.hypot(tx[2], tx[3]);
+        const width = (it.width || 0) * viewport.scale;
+        const left = tx[4];
+        const top = tx[5] - fontHeight;
+        boxes.push({ x: left, y: top, w: width, h: fontHeight, size: fontHeight, str: it.str });
+      }
+      allBoxes.push(boxes);
     }
     setPageImages(imgs);
     setPageSizes(sizes);
+    setPageTextBoxes(allBoxes);
     setPageRotations(new Array(imgs.length).fill(0));
   }
 
@@ -187,6 +208,24 @@ function EditorPage() {
           y: ph - (ann.y + ann.h) * sy,
           width: ann.w * sx,
           height: ann.h * sy,
+        });
+      } else if (ann.type === "edit") {
+        // Cover original text with white, then draw new text
+        const pad = 2;
+        page.drawRectangle({
+          x: ann.x * sx - pad,
+          y: ph - (ann.y + ann.h) * sy - pad,
+          width: ann.w * sx + pad * 2,
+          height: ann.h * sy + pad * 2,
+          color: rgb(1, 1, 1),
+        });
+        const size = ann.size * sy;
+        page.drawText(ann.text, {
+          x: ann.x * sx,
+          y: ph - ann.y * sy - size,
+          size,
+          font,
+          color: rgb(0, 0, 0),
         });
       }
     }
@@ -399,6 +438,34 @@ function EditorPage() {
                       transform: `rotate(${pageRotations[currentPage] || 0}deg)`,
                     }}
                   />
+                  {/* Clickable text boxes when editing existing text */}
+                  {tool === "edit" &&
+                    (pageTextBoxes[currentPage] || []).map((b, i) => (
+                      <button
+                        key={`tb-${i}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const next = prompt("Edit text:", b.str);
+                          if (next === null) return;
+                          setAnnotations((a) => [
+                            ...a,
+                            {
+                              type: "edit",
+                              page: currentPage,
+                              x: b.x,
+                              y: b.y,
+                              w: b.w,
+                              h: b.h,
+                              size: b.size,
+                              text: next,
+                            },
+                          ]);
+                        }}
+                        className="absolute border border-dashed border-primary/60 bg-primary/5 hover:bg-primary/20"
+                        style={{ left: b.x, top: b.y, width: b.w, height: b.h }}
+                        title={b.str}
+                      />
+                    ))}
                   {annotations
                     .filter((a) => a.page === currentPage)
                     .map((a, i) => {
@@ -431,6 +498,24 @@ function EditorPage() {
                             }}
                           />
                         );
+                      if (a.type === "edit")
+                        return (
+                          <div
+                            key={i}
+                            className="absolute flex items-center bg-white font-sans text-black"
+                            style={{
+                              left: a.x - 2,
+                              top: a.y - 2,
+                              width: a.w + 4,
+                              height: a.h + 4,
+                              fontSize: a.size,
+                              lineHeight: `${a.h}px`,
+                              pointerEvents: "none",
+                            }}
+                          >
+                            {a.text}
+                          </div>
+                        );
                       return (
                         <img
                           key={i}
@@ -461,6 +546,12 @@ function EditorPage() {
               <div className="mb-2 px-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                 Tools
               </div>
+              <ToolBtn
+                icon={<Edit3 className="size-4" />}
+                label="Edit text"
+                active={tool === "edit"}
+                onClick={() => setTool(tool === "edit" ? "select" : "edit")}
+              />
               <ToolBtn
                 icon={<Type className="size-4" />}
                 label="Add text"
