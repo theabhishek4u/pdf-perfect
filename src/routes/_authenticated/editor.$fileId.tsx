@@ -88,6 +88,7 @@ function EditorPage() {
     const doc = await pdfjsLib.getDocument({ data: buf.slice() }).promise;
     const imgs: string[] = [];
     const sizes: { w: number; h: number }[] = [];
+    const allBoxes: TextBox[][] = [];
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i);
       const viewport = page.getViewport({ scale: 1.5 });
@@ -98,9 +99,24 @@ function EditorPage() {
       await page.render({ canvasContext: ctx, viewport, canvas }).promise;
       imgs.push(canvas.toDataURL("image/png"));
       sizes.push({ w: viewport.width, h: viewport.height });
+
+      // Extract text positions in canvas pixel coords
+      const tc = await page.getTextContent();
+      const boxes: TextBox[] = [];
+      for (const it of tc.items as any[]) {
+        if (!it.str || !it.str.trim()) continue;
+        const tx = pdfjsLib.Util.transform(viewport.transform, it.transform);
+        const fontHeight = Math.hypot(tx[2], tx[3]);
+        const width = (it.width || 0) * viewport.scale;
+        const left = tx[4];
+        const top = tx[5] - fontHeight;
+        boxes.push({ x: left, y: top, w: width, h: fontHeight, size: fontHeight, str: it.str });
+      }
+      allBoxes.push(boxes);
     }
     setPageImages(imgs);
     setPageSizes(sizes);
+    setPageTextBoxes(allBoxes);
     setPageRotations(new Array(imgs.length).fill(0));
   }
 
