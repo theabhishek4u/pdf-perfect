@@ -438,6 +438,34 @@ function EditorPage() {
                       transform: `rotate(${pageRotations[currentPage] || 0}deg)`,
                     }}
                   />
+                  {/* Clickable text boxes when editing existing text */}
+                  {tool === "edit" &&
+                    (pageTextBoxes[currentPage] || []).map((b, i) => (
+                      <button
+                        key={`tb-${i}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const next = prompt("Edit text:", b.str);
+                          if (next === null) return;
+                          setAnnotations((a) => [
+                            ...a,
+                            {
+                              type: "edit",
+                              page: currentPage,
+                              x: b.x,
+                              y: b.y,
+                              w: b.w,
+                              h: b.h,
+                              size: b.size,
+                              text: next,
+                            },
+                          ]);
+                        }}
+                        className="absolute border border-dashed border-primary/60 bg-primary/5 hover:bg-primary/20"
+                        style={{ left: b.x, top: b.y, width: b.w, height: b.h }}
+                        title={b.str}
+                      />
+                    ))}
                   {annotations
                     .filter((a) => a.page === currentPage)
                     .map((a, i) => {
@@ -469,6 +497,24 @@ function EditorPage() {
                               pointerEvents: "none",
                             }}
                           />
+                        );
+                      if (a.type === "edit")
+                        return (
+                          <div
+                            key={i}
+                            className="absolute flex items-center bg-white font-sans text-black"
+                            style={{
+                              left: a.x - 2,
+                              top: a.y - 2,
+                              width: a.w + 4,
+                              height: a.h + 4,
+                              fontSize: a.size,
+                              lineHeight: `${a.h}px`,
+                              pointerEvents: "none",
+                            }}
+                          >
+                            {a.text}
+                          </div>
                         );
                       return (
                         <img
