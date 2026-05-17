@@ -17,6 +17,7 @@ import {
   RotateCw,
   Trash2,
   Loader2,
+  Edit3,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/editor/$fileId")({
