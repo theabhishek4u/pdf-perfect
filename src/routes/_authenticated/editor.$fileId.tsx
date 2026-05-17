@@ -547,6 +547,12 @@ function EditorPage() {
                 Tools
               </div>
               <ToolBtn
+                icon={<Edit3 className="size-4" />}
+                label="Edit text"
+                active={tool === "edit"}
+                onClick={() => setTool(tool === "edit" ? "select" : "edit")}
+              />
+              <ToolBtn
                 icon={<Type className="size-4" />}
                 label="Add text"
                 active={tool === "text"}
