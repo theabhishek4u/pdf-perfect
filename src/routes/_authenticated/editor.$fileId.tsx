@@ -51,6 +51,7 @@ function EditorPage() {
   const [pageRotations, setPageRotations] = useState<number[]>([]);
   const [showSig, setShowSig] = useState(false);
   const [pendingSig, setPendingSig] = useState<string | null>(null);
+  const [pageTextBoxes, setPageTextBoxes] = useState<TextBox[][]>([]);
 
   const overlayRef = useRef<HTMLDivElement>(null);
 
