@@ -227,6 +227,7 @@ function EditorPage() {
         const fontInfo = inferFontInfo(
           `${psFontName || ""} ${it.fontName || ""} ${style.fontFamily || ""}`,
         );
+        const sampled = sampleTextBackground(ctx, tx[4], top, width, height);
         items.push({
           id: `t-${i}-${items.length}`,
           page: i - 1,
@@ -239,7 +240,8 @@ function EditorPage() {
           fontWeight: fontInfo.weight,
           fontStyle: fontInfo.style,
           psFontName,
-          background: sampleTextBackground(ctx, tx[4], top, width, height),
+          background: sampled.background,
+          color: sampled.color,
           originalStr: it.str,
           str: it.str,
         });
