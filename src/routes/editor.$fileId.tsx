@@ -600,6 +600,9 @@ function EditorPage() {
                     key={item.id}
                     item={item}
                     editing={editing}
+                    active={activeTextId === item.id}
+                    onActivate={() => setActiveTextId(item.id)}
+                    onDeactivate={() => setActiveTextId((id) => (id === item.id ? null : id))}
                     onCommit={(v) => commitTextEdit(item.id, v)}
                   />
                 ))}
@@ -680,10 +683,16 @@ function TopTool({
 function EditableTextRun({
   item,
   editing,
+  active,
+  onActivate,
+  onDeactivate,
   onCommit,
 }: {
   item: TextItem;
   editing: boolean;
+  active: boolean;
+  onActivate: () => void;
+  onDeactivate: () => void;
   onCommit: (v: string) => void;
 }) {
   const ref = useRef<HTMLSpanElement | null>(null);
@@ -707,14 +716,19 @@ function EditableTextRun({
       suppressContentEditableWarning
       spellCheck={false}
       onClick={(e) => {
-        if (editing) e.stopPropagation();
+        if (editing) {
+          e.stopPropagation();
+          onActivate();
+        }
       }}
+      onFocus={onActivate}
       onBlur={(e) => {
         const v = e.currentTarget.textContent ?? "";
         if (v !== lastSeenRef.current) {
           lastSeenRef.current = v;
           onCommit(v);
         }
+        onDeactivate();
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
@@ -730,13 +744,15 @@ function EditableTextRun({
         height: item.height,
         fontSize: item.fontSize,
         lineHeight: `${item.height}px`,
-        fontFamily: "Helvetica, Arial, sans-serif",
+        fontFamily: item.fontFamily,
+        fontWeight: item.fontWeight,
+        fontStyle: item.fontStyle,
         color: "#000",
-        // White background masks the rasterized original text underneath
-        background: editing || isModified ? "#fff" : "transparent",
-        // In edit mode, hide the rasterized text by painting white on top.
-        // The HTML text is visible on top of that background.
-        outline: editing ? "1px dashed rgba(59,130,246,0.5)" : isModified ? "1px solid rgba(59,130,246,0.4)" : "none",
+        background:
+          active || isModified
+            ? `rgb(${item.background.r}, ${item.background.g}, ${item.background.b})`
+            : "transparent",
+        outline: active ? "1px solid rgba(37,99,235,0.65)" : "none",
         padding: 0,
         margin: 0,
         whiteSpace: "pre",
@@ -744,7 +760,7 @@ function EditableTextRun({
         pointerEvents: editing ? "auto" : "none",
         // When NOT editing and unmodified, keep the HTML span invisible so the
         // user sees the original rasterized text from the page image.
-        opacity: editing || isModified ? 1 : 0,
+        opacity: active || isModified ? 1 : 0,
         userSelect: editing ? "text" : "none",
       }}
     />
