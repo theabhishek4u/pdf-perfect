@@ -54,6 +54,7 @@ type TextItem = {
   fontFamily: string;
   fontWeight: number;
   fontStyle: "normal" | "italic";
+  psFontName: string | null;
   background: { r: number; g: number; b: number };
   originalStr: string;
   str: string;
