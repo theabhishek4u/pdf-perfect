@@ -35,6 +35,7 @@ import {
 import { getPdf, updatePdf } from "@/lib/pdf-store";
 
 export const Route = createFileRoute("/editor/$fileId")({
+  ssr: false,
   component: EditorPage,
   head: () => ({ meta: [{ title: "Editor — PDF Editify" }] }),
 });
