@@ -91,6 +91,28 @@ function sampleTextBackground(ctx: CanvasRenderingContext2D, x: number, y: numbe
   }
 }
 
+function getExportFont(item: TextItem, fonts: Record<string, any>) {
+  const family = item.fontFamily.toLowerCase();
+  const bold = item.fontWeight >= 600;
+  const italic = item.fontStyle === "italic";
+  if (/times|serif|roman/.test(family)) {
+    if (bold && italic) return fonts.timesBoldItalic;
+    if (bold) return fonts.timesBold;
+    if (italic) return fonts.timesItalic;
+    return fonts.times;
+  }
+  if (/courier|mono|code/.test(family)) {
+    if (bold && italic) return fonts.courierBoldItalic;
+    if (bold) return fonts.courierBold;
+    if (italic) return fonts.courierItalic;
+    return fonts.courier;
+  }
+  if (bold && italic) return fonts.helveticaBoldItalic;
+  if (bold) return fonts.helveticaBold;
+  if (italic) return fonts.helveticaItalic;
+  return fonts.helvetica;
+}
+
 function EditorPage() {
   const { fileId } = Route.useParams();
   const navigate = useNavigate();
