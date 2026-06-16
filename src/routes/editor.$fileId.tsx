@@ -175,6 +175,10 @@ function EditorPage() {
     const sizes: { w: number; h: number }[] = [];
     const items: TextItem[] = [];
 
+    setPageImages([]);
+    setPageSizes([]);
+    setTextItems([]);
+
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i);
       const viewport = page.getViewport({ scale: RENDER_SCALE });
@@ -194,17 +198,30 @@ function EditorPage() {
         if (!it.str || !it.str.trim()) continue;
         const style = tc.styles[it.fontName] || {};
         const tx = pdfjsLib.Util.transform(viewport.transform, it.transform);
-        // tx[0..3] is the matrix, tx[4]/tx[5] is the position.
-        // Font size is the vertical scale of the matrix.
         const fontSize = Math.hypot(tx[2], tx[3]);
         const width = (it.width || it.str.length * fontSize * 0.5) * viewport.scale;
         const ascent = typeof style.ascent === "number" ? style.ascent : 0.82;
         const descent = typeof style.descent === "number" ? style.descent : -0.18;
-        // tx[5] is the baseline Y. Use PDF.js font metrics when available so
-        // the edit box hugs the glyphs instead of creating a visible white band.
         const top = tx[5] - fontSize * ascent;
         const height = Math.max(fontSize * (ascent - descent), fontSize * 0.9);
-        const fontInfo = inferFontInfo(`${it.fontName || ""} ${style.fontFamily || ""}`);
+
+        // Try to read the embedded PostScript font name from pdfjs's loaded
+        // font objects. This is what we'll match against pdf-lib's embedded
+        // fonts so edits keep the exact original typeface.
+        let psFontName: string | null = null;
+        try {
+          const fontObj = (page as unknown as {
+            commonObjs: { get: (n: string) => { name?: string } | null };
+          }).commonObjs.get(it.fontName);
+          if (fontObj?.name) {
+            psFontName = fontObj.name.replace(/^[A-Z]{6}\+/, "");
+          }
+        } catch {
+          /* font not ready — fall back to family heuristic */
+        }
+        const fontInfo = inferFontInfo(
+          `${psFontName || ""} ${it.fontName || ""} ${style.fontFamily || ""}`,
+        );
         items.push({
           id: `t-${i}-${items.length}`,
           page: i - 1,
@@ -216,16 +233,20 @@ function EditorPage() {
           fontFamily: style.fontFamily || fontInfo.family,
           fontWeight: fontInfo.weight,
           fontStyle: fontInfo.style,
+          psFontName,
           background: sampleTextBackground(ctx, tx[4], top, width, height),
           originalStr: it.str,
           str: it.str,
         });
       }
+
+      // Push progressive state so the user can start editing the first page
+      // immediately while remaining pages are still rendering.
+      setPageImages([...imgs]);
+      setPageSizes([...sizes]);
+      setTextItems([...items]);
     }
 
-    setPageImages(imgs);
-    setPageSizes(sizes);
-    setTextItems(items);
     setPageRotations(new Array(imgs.length).fill(0));
   }, []);
 
@@ -239,7 +260,12 @@ function EditorPage() {
       }
       setFileName(item.record.name);
       setPdfBytes(item.bytes);
-      await renderPdf(item.bytes);
+      // Flip loading off as soon as the first page renders so the editor
+      // becomes interactive immediately.
+      const first = renderPdf(item.bytes);
+      const off = setTimeout(() => setLoading(false), 50);
+      await first;
+      clearTimeout(off);
       setLoading(false);
     })();
   }, [fileId, navigate, renderPdf]);
