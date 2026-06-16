@@ -250,12 +250,29 @@ function EditorPage() {
     } else if (tool === "highlight") {
       setAnnotations((a) => [
         ...a,
-        { id: crypto.randomUUID(), type: "highlight", page: currentPage, x, y: y - 8, w: 120, h: 16 },
+        {
+          id: crypto.randomUUID(),
+          type: "highlight",
+          page: currentPage,
+          x,
+          y: y - 8,
+          w: 120,
+          h: 16,
+        },
       ]);
     } else if (tool === "sign" && pendingSig) {
       setAnnotations((a) => [
         ...a,
-        { id: crypto.randomUUID(), type: "image", page: currentPage, x, y, w: 140, h: 50, dataUrl: pendingSig },
+        {
+          id: crypto.randomUUID(),
+          type: "image",
+          page: currentPage,
+          x,
+          y,
+          w: 140,
+          h: 50,
+          dataUrl: pendingSig,
+        },
       ]);
     }
   }
@@ -451,7 +468,13 @@ function EditorPage() {
   }
 
   const cursor =
-    tool === "text" ? "text" : tool === "highlight" ? "crosshair" : tool === "sign" ? "copy" : "default";
+    tool === "text"
+      ? "text"
+      : tool === "highlight"
+        ? "crosshair"
+        : tool === "sign"
+          ? "copy"
+          : "default";
 
   const currentSize = pageSizes[currentPage];
   const currentRotation = pageRotations[currentPage] || 0;
