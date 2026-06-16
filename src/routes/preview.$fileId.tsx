@@ -6,6 +6,7 @@ import { getPreview } from "@/lib/preview-store";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/preview/$fileId")({
+  ssr: false,
   component: PreviewPage,
   head: () => ({ meta: [{ title: "Preview — PDF Editify" }] }),
 });
