@@ -659,26 +659,3 @@ function EditableTextRun({
   );
 }
 
-function ToolBtn({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm transition-colors ${
-        active ? "bg-primary text-primary-foreground" : "hover:bg-white"
-      }`}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
-  );
-}
