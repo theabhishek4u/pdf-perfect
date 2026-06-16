@@ -143,7 +143,7 @@ function EditorPage() {
   const [pageImages, setPageImages] = useState<string[]>([]);
   const [pageSizes, setPageSizes] = useState<{ w: number; h: number }[]>([]);
   const [currentPage, setCurrentPage] = useState(0);
-  const [tool, setTool] = useState<Tool>("select");
+  const [tool, setTool] = useState<Tool>("edit");
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [textItems, setTextItems] = useState<TextItem[]>([]);
   const [loading, setLoading] = useState(true);

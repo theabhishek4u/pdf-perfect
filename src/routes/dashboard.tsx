@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
@@ -29,6 +29,7 @@ function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [query, setQuery] = useState("");
+  const navigate = useNavigate();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -46,23 +47,30 @@ function DashboardPage() {
 
   const onDrop = useCallback(
     async (accepted: File[]) => {
+      if (accepted.length === 0) return;
       setUploading(true);
+      let firstId: string | null = null;
       for (const file of accepted) {
         if (file.size > 50 * 1024 * 1024) {
           toast.error(`${file.name} exceeds 50MB`);
           continue;
         }
         try {
-          await addPdf(file);
+          const rec = await addPdf(file);
+          if (!firstId) firstId = rec.id;
         } catch (e) {
           toast.error((e as Error).message);
         }
       }
       setUploading(false);
-      toast.success("Uploaded");
-      refresh();
+      if (firstId) {
+        toast.success("Opening editor…");
+        navigate({ to: "/editor/$fileId", params: { fileId: firstId } });
+      } else {
+        refresh();
+      }
     },
-    [refresh],
+    [refresh, navigate],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
