@@ -73,8 +73,8 @@ function inferFontInfo(rawName: string) {
     family: isSerif
       ? "Times New Roman, Times, serif"
       : isMono
-          ? "Courier New, Courier, monospace"
-          : "Helvetica, Arial, sans-serif",
+        ? "Courier New, Courier, monospace"
+        : "Helvetica, Arial, sans-serif",
     weight: /bold|black|heavy|semibold|demi/.test(name) ? 700 : 400,
     style: /italic|oblique/.test(name) ? ("italic" as const) : ("normal" as const),
   };
