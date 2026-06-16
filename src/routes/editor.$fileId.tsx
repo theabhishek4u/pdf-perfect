@@ -53,6 +53,44 @@ type Annotation =
 
 const RENDER_SCALE = 1.5;
 
+function inferFontInfo(rawName: string) {
+  const name = rawName.toLowerCase();
+  const isSerif = /times|serif|roman/.test(name);
+  const isMono = /courier|mono|code/.test(name);
+  return {
+    family: isSerif ? "Times New Roman, Times, serif" : isMono ? "Courier New, Courier, monospace" : "Helvetica, Arial, sans-serif",
+    weight: /bold|black|heavy|semibold|demi/.test(name) ? 700 : 400,
+    style: /italic|oblique/.test(name) ? ("italic" as const) : ("normal" as const),
+  };
+}
+
+function sampleTextBackground(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
+  const sx = Math.max(0, Math.floor(x));
+  const sy = Math.max(0, Math.floor(y));
+  const sw = Math.max(1, Math.min(ctx.canvas.width - sx, Math.ceil(width)));
+  const sh = Math.max(1, Math.min(ctx.canvas.height - sy, Math.ceil(height)));
+  try {
+    const data = ctx.getImageData(sx, sy, sw, sh).data;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      // Prefer light/background pixels and ignore dark glyph pixels.
+      if (data[i] + data[i + 1] + data[i + 2] > 560) {
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+        count++;
+      }
+    }
+    if (!count) return { r: 255, g: 255, b: 255 };
+    return { r: Math.round(r / count), g: Math.round(g / count), b: Math.round(b / count) };
+  } catch {
+    return { r: 255, g: 255, b: 255 };
+  }
+}
+
 function EditorPage() {
   const { fileId } = Route.useParams();
   const navigate = useNavigate();
