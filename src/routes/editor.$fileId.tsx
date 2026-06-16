@@ -823,8 +823,21 @@ function EditorPage() {
                     onActivate={() => setActiveTextId(item.id)}
                     onDeactivate={() => setActiveTextId((id) => (id === item.id ? null : id))}
                     onCommit={(v) => commitTextEdit(item.id, v)}
+                    onCancel={() => {
+                      resetTextItem(item.id);
+                      setActiveTextId(null);
+                    }}
                   />
                 ))}
+
+                {editing && activeItem && activeItem.page === currentPage && (
+                  <FloatingTextToolbar
+                    item={activeItem}
+                    containerWidth={currentSize.w}
+                    onChange={(patch) => updateTextStyle(activeItem.id, patch)}
+                    onReset={() => resetTextItem(activeItem.id)}
+                  />
+                )}
 
                 {annotations
                   .filter((a) => a.page === currentPage)
