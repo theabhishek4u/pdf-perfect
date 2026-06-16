@@ -103,30 +103,32 @@ function sampleTextBackground(
   y: number,
   width: number,
   height: number,
-) {
+): { background: RGB; color: RGB } {
   const sx = Math.max(0, Math.floor(x));
   const sy = Math.max(0, Math.floor(y));
   const sw = Math.max(1, Math.min(ctx.canvas.width - sx, Math.ceil(width)));
   const sh = Math.max(1, Math.min(ctx.canvas.height - sy, Math.ceil(height)));
   try {
     const data = ctx.getImageData(sx, sy, sw, sh).data;
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    let count = 0;
+    let br = 0, bg = 0, bb = 0, bc = 0;
+    let fr = 0, fg = 0, fb = 0, fc = 0;
     for (let i = 0; i < data.length; i += 4) {
-      // Prefer light/background pixels and ignore dark glyph pixels.
-      if (data[i] + data[i + 1] + data[i + 2] > 560) {
-        r += data[i];
-        g += data[i + 1];
-        b += data[i + 2];
-        count++;
+      const sum = data[i] + data[i + 1] + data[i + 2];
+      if (sum > 560) {
+        br += data[i]; bg += data[i + 1]; bb += data[i + 2]; bc++;
+      } else if (sum < 380) {
+        fr += data[i]; fg += data[i + 1]; fb += data[i + 2]; fc++;
       }
     }
-    if (!count) return { r: 255, g: 255, b: 255 };
-    return { r: Math.round(r / count), g: Math.round(g / count), b: Math.round(b / count) };
+    const background = bc
+      ? { r: Math.round(br / bc), g: Math.round(bg / bc), b: Math.round(bb / bc) }
+      : { r: 255, g: 255, b: 255 };
+    const color = fc
+      ? { r: Math.round(fr / fc), g: Math.round(fg / fc), b: Math.round(fb / fc) }
+      : { r: 0, g: 0, b: 0 };
+    return { background, color };
   } catch {
-    return { r: 255, g: 255, b: 255 };
+    return { background: { r: 255, g: 255, b: 255 }, color: { r: 0, g: 0, b: 0 } };
   }
 }
 
