@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PreviewFileIdRouteImport } from './routes/preview.$fileId'
 import { Route as EditorFileIdRouteImport } from './routes/editor.$fileId'
 
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
@@ -29,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PreviewFileIdRoute = PreviewFileIdRouteImport.update({
+  id: '/preview/$fileId',
+  path: '/preview/$fileId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EditorFileIdRoute = EditorFileIdRouteImport.update({
   id: '/editor/$fileId',
   path: '/editor/$fileId',
@@ -40,12 +46,14 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/editor/$fileId': typeof EditorFileIdRoute
+  '/preview/$fileId': typeof PreviewFileIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/editor/$fileId': typeof EditorFileIdRoute
+  '/preview/$fileId': typeof PreviewFileIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +61,30 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/editor/$fileId': typeof EditorFileIdRoute
+  '/preview/$fileId': typeof PreviewFileIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dashboard' | '/sitemap.xml' | '/editor/$fileId'
+  fullPaths:
+    | '/'
+    | '/dashboard'
+    | '/sitemap.xml'
+    | '/editor/$fileId'
+    | '/preview/$fileId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dashboard' | '/sitemap.xml' | '/editor/$fileId'
-  id: '__root__' | '/' | '/dashboard' | '/sitemap.xml' | '/editor/$fileId'
+  to:
+    | '/'
+    | '/dashboard'
+    | '/sitemap.xml'
+    | '/editor/$fileId'
+    | '/preview/$fileId'
+  id:
+    | '__root__'
+    | '/'
+    | '/dashboard'
+    | '/sitemap.xml'
+    | '/editor/$fileId'
+    | '/preview/$fileId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +92,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   EditorFileIdRoute: typeof EditorFileIdRoute
+  PreviewFileIdRoute: typeof PreviewFileIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -92,6 +118,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/preview/$fileId': {
+      id: '/preview/$fileId'
+      path: '/preview/$fileId'
+      fullPath: '/preview/$fileId'
+      preLoaderRoute: typeof PreviewFileIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/editor/$fileId': {
       id: '/editor/$fileId'
       path: '/editor/$fileId'
@@ -107,6 +140,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   EditorFileIdRoute: EditorFileIdRoute,
+  PreviewFileIdRoute: PreviewFileIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

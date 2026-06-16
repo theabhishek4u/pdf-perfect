@@ -1,8 +1,20 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont } from "pdf-lib";
+import {
+  PDFDocument,
+  StandardFonts,
+  rgb,
+  degrees,
+  PDFDict,
+  PDFName,
+  PDFRawStream,
+  decodePDFRawStream,
+  type PDFFont,
+} from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import { pdfjsLib } from "@/lib/pdfjs-setup";
 import { SignaturePad } from "@/components/signature-pad";
+import { setPreview } from "@/lib/preview-store";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -11,6 +23,7 @@ import {
   PenTool,
   Download,
   Save,
+  Eye,
   Scissors,
   Plus,
   RotateCw,
@@ -41,6 +54,7 @@ type TextItem = {
   fontFamily: string;
   fontWeight: number;
   fontStyle: "normal" | "italic";
+  psFontName: string | null;
   background: { r: number; g: number; b: number };
   originalStr: string;
   str: string;
@@ -161,6 +175,10 @@ function EditorPage() {
     const sizes: { w: number; h: number }[] = [];
     const items: TextItem[] = [];
 
+    setPageImages([]);
+    setPageSizes([]);
+    setTextItems([]);
+
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i);
       const viewport = page.getViewport({ scale: RENDER_SCALE });
@@ -180,17 +198,30 @@ function EditorPage() {
         if (!it.str || !it.str.trim()) continue;
         const style = tc.styles[it.fontName] || {};
         const tx = pdfjsLib.Util.transform(viewport.transform, it.transform);
-        // tx[0..3] is the matrix, tx[4]/tx[5] is the position.
-        // Font size is the vertical scale of the matrix.
         const fontSize = Math.hypot(tx[2], tx[3]);
         const width = (it.width || it.str.length * fontSize * 0.5) * viewport.scale;
         const ascent = typeof style.ascent === "number" ? style.ascent : 0.82;
         const descent = typeof style.descent === "number" ? style.descent : -0.18;
-        // tx[5] is the baseline Y. Use PDF.js font metrics when available so
-        // the edit box hugs the glyphs instead of creating a visible white band.
         const top = tx[5] - fontSize * ascent;
         const height = Math.max(fontSize * (ascent - descent), fontSize * 0.9);
-        const fontInfo = inferFontInfo(`${it.fontName || ""} ${style.fontFamily || ""}`);
+
+        // Try to read the embedded PostScript font name from pdfjs's loaded
+        // font objects. This is what we'll match against pdf-lib's embedded
+        // fonts so edits keep the exact original typeface.
+        let psFontName: string | null = null;
+        try {
+          const fontObj = (page as unknown as {
+            commonObjs: { get: (n: string) => { name?: string } | null };
+          }).commonObjs.get(it.fontName);
+          if (fontObj?.name) {
+            psFontName = fontObj.name.replace(/^[A-Z]{6}\+/, "");
+          }
+        } catch {
+          /* font not ready — fall back to family heuristic */
+        }
+        const fontInfo = inferFontInfo(
+          `${psFontName || ""} ${it.fontName || ""} ${style.fontFamily || ""}`,
+        );
         items.push({
           id: `t-${i}-${items.length}`,
           page: i - 1,
@@ -202,16 +233,20 @@ function EditorPage() {
           fontFamily: style.fontFamily || fontInfo.family,
           fontWeight: fontInfo.weight,
           fontStyle: fontInfo.style,
+          psFontName,
           background: sampleTextBackground(ctx, tx[4], top, width, height),
           originalStr: it.str,
           str: it.str,
         });
       }
+
+      // Push progressive state so the user can start editing the first page
+      // immediately while remaining pages are still rendering.
+      setPageImages([...imgs]);
+      setPageSizes([...sizes]);
+      setTextItems([...items]);
     }
 
-    setPageImages(imgs);
-    setPageSizes(sizes);
-    setTextItems(items);
     setPageRotations(new Array(imgs.length).fill(0));
   }, []);
 
@@ -225,7 +260,12 @@ function EditorPage() {
       }
       setFileName(item.record.name);
       setPdfBytes(item.bytes);
-      await renderPdf(item.bytes);
+      // Flip loading off as soon as the first page renders so the editor
+      // becomes interactive immediately.
+      const first = renderPdf(item.bytes);
+      const off = setTimeout(() => setLoading(false), 50);
+      await first;
+      clearTimeout(off);
       setLoading(false);
     })();
   }, [fileId, navigate, renderPdf]);
@@ -277,9 +317,44 @@ function EditorPage() {
     }
   }
 
+  async function extractOriginalFonts(doc: PDFDocument): Promise<Map<string, PDFFont>> {
+    const map = new Map<string, PDFFont>();
+    try {
+      doc.registerFontkit(fontkit);
+      const ctx = doc.context;
+      const indirect = ctx.enumerateIndirectObjects();
+      for (const [, obj] of indirect) {
+        if (!(obj instanceof PDFDict)) continue;
+        const type = obj.get(PDFName.of("Type"));
+        if (!type || type.toString() !== "/Font") continue;
+        const descriptor = obj.lookup(PDFName.of("FontDescriptor"));
+        if (!(descriptor instanceof PDFDict)) continue;
+        const fontFileRef =
+          descriptor.lookup(PDFName.of("FontFile2")) ||
+          descriptor.lookup(PDFName.of("FontFile3")) ||
+          descriptor.lookup(PDFName.of("FontFile"));
+        if (!(fontFileRef instanceof PDFRawStream)) continue;
+        const psNameRaw = descriptor.get(PDFName.of("FontName"))?.toString() || "";
+        const psName = psNameRaw.replace(/^\//, "").replace(/^[A-Z]{6}\+/, "");
+        if (!psName || map.has(psName.toLowerCase())) continue;
+        try {
+          const bytes = decodePDFRawStream(fontFileRef).decode();
+          const embedded = await doc.embedFont(bytes, { subset: true });
+          map.set(psName.toLowerCase(), embedded);
+        } catch {
+          /* skip unsupported font formats (Type1, CFF without OpenType wrapper, etc.) */
+        }
+      }
+    } catch {
+      /* ignore — fall back to standard fonts */
+    }
+    return map;
+  }
+
   async function buildEditedPdf(): Promise<Uint8Array> {
     if (!pdfBytes) throw new Error("No PDF");
     const doc = await PDFDocument.load(pdfBytes);
+    doc.registerFontkit(fontkit);
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const embeddedFonts = {
       helvetica: font,
@@ -295,6 +370,7 @@ function EditorPage() {
       courierItalic: await doc.embedFont(StandardFonts.CourierOblique),
       courierBoldItalic: await doc.embedFont(StandardFonts.CourierBoldOblique),
     };
+    const originalFonts = await extractOriginalFonts(doc);
     const pages = doc.getPages();
 
     pageRotations.forEach((rot, i) => {
@@ -315,11 +391,20 @@ function EditorPage() {
       const sx = pw / rendered.w;
       const sy = ph / rendered.h;
 
-      const editFont = getExportFont(it, embeddedFonts);
+      // Prefer the exact original embedded font when available so edits are
+      // visually indistinguishable from the surrounding text.
+      const originalFont = it.psFontName
+        ? originalFonts.get(it.psFontName.toLowerCase())
+        : undefined;
+      const editFont = originalFont ?? getExportFont(it, embeddedFonts);
       const size = it.fontSize * sy;
-      const editedWidth = editFont.widthOfTextAtSize(it.str, size);
+      let editedWidth = size * it.str.length * 0.5;
+      try {
+        editedWidth = editFont.widthOfTextAtSize(it.str, size);
+      } catch {
+        /* some embedded subsets can't measure arbitrary chars — keep estimate */
+      }
       const coverWidth = Math.max(it.width * sx, editedWidth);
-      // Cover only the original glyph area with the sampled page background.
       const pad = Math.max(0.35, size * 0.04);
       page.drawRectangle({
         x: it.x * sx - pad,
@@ -328,14 +413,26 @@ function EditorPage() {
         height: it.height * sy + pad * 2,
         color: rgb(it.background.r / 255, it.background.g / 255, it.background.b / 255),
       });
-      page.drawText(it.str, {
-        x: it.x * sx,
-        y: ph - it.y * sy - size,
-        size,
-        font: editFont,
-        color: rgb(0, 0, 0),
-      });
+      try {
+        page.drawText(it.str, {
+          x: it.x * sx,
+          y: ph - it.y * sy - size,
+          size,
+          font: editFont,
+          color: rgb(0, 0, 0),
+        });
+      } catch {
+        // Original font can't encode the new characters — fall back to standard.
+        page.drawText(it.str, {
+          x: it.x * sx,
+          y: ph - it.y * sy - size,
+          size,
+          font: getExportFont(it, embeddedFonts),
+          color: rgb(0, 0, 0),
+        });
+      }
     }
+
 
     for (const ann of annotations) {
       const page = pages[ann.page];
@@ -388,6 +485,18 @@ function EditorPage() {
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Downloaded");
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+    setSaving(false);
+  }
+
+  async function handleApplyPreview() {
+    setSaving(true);
+    try {
+      const out = await buildEditedPdf();
+      setPreview(fileId, out, fileName);
+      navigate({ to: "/preview/$fileId", params: { fileId } });
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -524,9 +633,17 @@ function EditorPage() {
               Save
             </button>
             <button
-              onClick={handleDownload}
+              onClick={handleApplyPreview}
               disabled={saving}
               className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-accent disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+              Apply &amp; Preview
+            </button>
+            <button
+              onClick={handleDownload}
+              disabled={saving}
+              className="flex items-center gap-2 rounded-full border border-border bg-white px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
             >
               <Download className="size-4" />
               Export
@@ -736,6 +853,22 @@ function EditorPage() {
                   })}
               </div>
             )}
+          </div>
+
+          <div className="sticky bottom-0 z-10 border-t border-border bg-white/95 backdrop-blur">
+            <div className="mx-auto flex max-w-[1400px] items-center justify-center gap-3 px-6 py-3">
+              <button
+                onClick={handleApplyPreview}
+                disabled={saving}
+                className="flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow-md hover:bg-accent disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+                Apply &amp; Preview
+              </button>
+              <span className="text-xs text-muted-foreground">
+                Review the final output, then download.
+              </span>
+            </div>
           </div>
         </>
       )}
