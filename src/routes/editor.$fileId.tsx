@@ -38,6 +38,10 @@ type TextItem = {
   width: number;
   height: number;
   fontSize: number;
+  fontFamily: string;
+  fontWeight: number;
+  fontStyle: "normal" | "italic";
+  background: { r: number; g: number; b: number };
   originalStr: string;
   str: string;
 };
@@ -65,6 +69,7 @@ function EditorPage() {
   const [pageRotations, setPageRotations] = useState<number[]>([]);
   const [showSig, setShowSig] = useState(false);
   const [pendingSig, setPendingSig] = useState<string | null>(null);
+  const [activeTextId, setActiveTextId] = useState<string | null>(null);
 
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -88,21 +93,31 @@ function EditorPage() {
       const tc = await page.getTextContent();
       for (const it of tc.items as any[]) {
         if (!it.str || !it.str.trim()) continue;
+        const style = (tc.styles as Record<string, any>)[it.fontName] || {};
         const tx = pdfjsLib.Util.transform(viewport.transform, it.transform);
         // tx[0..3] is the matrix, tx[4]/tx[5] is the position.
         // Font size is the vertical scale of the matrix.
         const fontSize = Math.hypot(tx[2], tx[3]);
         const width = (it.width || it.str.length * fontSize * 0.5) * viewport.scale;
-        // tx[5] is the baseline Y. Top of text ≈ baseline - fontSize * 0.82
-        const top = tx[5] - fontSize * 0.82;
+        const ascent = typeof style.ascent === "number" ? style.ascent : 0.82;
+        const descent = typeof style.descent === "number" ? style.descent : -0.18;
+        // tx[5] is the baseline Y. Use PDF.js font metrics when available so
+        // the edit box hugs the glyphs instead of creating a visible white band.
+        const top = tx[5] - fontSize * ascent;
+        const height = Math.max(fontSize * (ascent - descent), fontSize * 0.9);
+        const fontInfo = inferFontInfo(`${it.fontName || ""} ${style.fontFamily || ""}`);
         items.push({
           id: `t-${i}-${items.length}`,
           page: i - 1,
           x: tx[4],
           y: top,
           width,
-          height: fontSize * 1.05,
+          height,
           fontSize,
+          fontFamily: style.fontFamily || fontInfo.family,
+          fontWeight: fontInfo.weight,
+          fontStyle: fontInfo.style,
+          background: sampleTextBackground(ctx, tx[4], top, width, height),
           originalStr: it.str,
           str: it.str,
         });
