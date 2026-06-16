@@ -317,9 +317,44 @@ function EditorPage() {
     }
   }
 
+  async function extractOriginalFonts(doc: PDFDocument): Promise<Map<string, PDFFont>> {
+    const map = new Map<string, PDFFont>();
+    try {
+      doc.registerFontkit(fontkit);
+      const ctx = doc.context;
+      const indirect = ctx.enumerateIndirectObjects();
+      for (const [, obj] of indirect) {
+        if (!(obj instanceof PDFDict)) continue;
+        const type = obj.get(PDFName.of("Type"));
+        if (!type || type.toString() !== "/Font") continue;
+        const descriptor = obj.lookup(PDFName.of("FontDescriptor"));
+        if (!(descriptor instanceof PDFDict)) continue;
+        const fontFileRef =
+          descriptor.lookup(PDFName.of("FontFile2")) ||
+          descriptor.lookup(PDFName.of("FontFile3")) ||
+          descriptor.lookup(PDFName.of("FontFile"));
+        if (!(fontFileRef instanceof PDFRawStream)) continue;
+        const psNameRaw = descriptor.get(PDFName.of("FontName"))?.toString() || "";
+        const psName = psNameRaw.replace(/^\//, "").replace(/^[A-Z]{6}\+/, "");
+        if (!psName || map.has(psName.toLowerCase())) continue;
+        try {
+          const bytes = decodePDFRawStream(fontFileRef).decode();
+          const embedded = await doc.embedFont(bytes, { subset: true });
+          map.set(psName.toLowerCase(), embedded);
+        } catch {
+          /* skip unsupported font formats (Type1, CFF without OpenType wrapper, etc.) */
+        }
+      }
+    } catch {
+      /* ignore — fall back to standard fonts */
+    }
+    return map;
+  }
+
   async function buildEditedPdf(): Promise<Uint8Array> {
     if (!pdfBytes) throw new Error("No PDF");
     const doc = await PDFDocument.load(pdfBytes);
+    doc.registerFontkit(fontkit);
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const embeddedFonts = {
       helvetica: font,
@@ -335,6 +370,7 @@ function EditorPage() {
       courierItalic: await doc.embedFont(StandardFonts.CourierOblique),
       courierBoldItalic: await doc.embedFont(StandardFonts.CourierBoldOblique),
     };
+    const originalFonts = await extractOriginalFonts(doc);
     const pages = doc.getPages();
 
     pageRotations.forEach((rot, i) => {
@@ -355,11 +391,20 @@ function EditorPage() {
       const sx = pw / rendered.w;
       const sy = ph / rendered.h;
 
-      const editFont = getExportFont(it, embeddedFonts);
+      // Prefer the exact original embedded font when available so edits are
+      // visually indistinguishable from the surrounding text.
+      const originalFont = it.psFontName
+        ? originalFonts.get(it.psFontName.toLowerCase())
+        : undefined;
+      const editFont = originalFont ?? getExportFont(it, embeddedFonts);
       const size = it.fontSize * sy;
-      const editedWidth = editFont.widthOfTextAtSize(it.str, size);
+      let editedWidth = size * it.str.length * 0.5;
+      try {
+        editedWidth = editFont.widthOfTextAtSize(it.str, size);
+      } catch {
+        /* some embedded subsets can't measure arbitrary chars — keep estimate */
+      }
       const coverWidth = Math.max(it.width * sx, editedWidth);
-      // Cover only the original glyph area with the sampled page background.
       const pad = Math.max(0.35, size * 0.04);
       page.drawRectangle({
         x: it.x * sx - pad,
@@ -368,14 +413,26 @@ function EditorPage() {
         height: it.height * sy + pad * 2,
         color: rgb(it.background.r / 255, it.background.g / 255, it.background.b / 255),
       });
-      page.drawText(it.str, {
-        x: it.x * sx,
-        y: ph - it.y * sy - size,
-        size,
-        font: editFont,
-        color: rgb(0, 0, 0),
-      });
+      try {
+        page.drawText(it.str, {
+          x: it.x * sx,
+          y: ph - it.y * sy - size,
+          size,
+          font: editFont,
+          color: rgb(0, 0, 0),
+        });
+      } catch {
+        // Original font can't encode the new characters — fall back to standard.
+        page.drawText(it.str, {
+          x: it.x * sx,
+          y: ph - it.y * sy - size,
+          size,
+          font: getExportFont(it, embeddedFonts),
+          color: rgb(0, 0, 0),
+        });
+      }
     }
+
 
     for (const ann of annotations) {
       const page = pages[ann.page];
