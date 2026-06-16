@@ -546,11 +546,36 @@ function EditorPage() {
           {/* Sejda-style horizontal tools bar */}
           <div className="sticky top-0 z-20 border-b border-border bg-white shadow-sm">
             <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-center gap-1 px-6 py-2">
-              <TopTool icon={<MousePointer2 className="size-4" />} label="Select" active={tool === "select"} onClick={() => setTool("select")} />
-              <TopTool icon={<Edit3 className="size-4" />} label="Edit text" active={tool === "edit"} onClick={() => setTool("edit")} />
-              <TopTool icon={<Type className="size-4" />} label="Add text" active={tool === "text"} onClick={() => setTool("text")} />
-              <TopTool icon={<Highlighter className="size-4" />} label="Highlight" active={tool === "highlight"} onClick={() => setTool("highlight")} />
-              <TopTool icon={<PenTool className="size-4" />} label="Sign" active={tool === "sign"} onClick={() => setShowSig(true)} />
+              <TopTool
+                icon={<MousePointer2 className="size-4" />}
+                label="Select"
+                active={tool === "select"}
+                onClick={() => setTool("select")}
+              />
+              <TopTool
+                icon={<Edit3 className="size-4" />}
+                label="Edit text"
+                active={tool === "edit"}
+                onClick={() => setTool("edit")}
+              />
+              <TopTool
+                icon={<Type className="size-4" />}
+                label="Add text"
+                active={tool === "text"}
+                onClick={() => setTool("text")}
+              />
+              <TopTool
+                icon={<Highlighter className="size-4" />}
+                label="Highlight"
+                active={tool === "highlight"}
+                onClick={() => setTool("highlight")}
+              />
+              <TopTool
+                icon={<PenTool className="size-4" />}
+                label="Sign"
+                active={tool === "sign"}
+                onClick={() => setShowSig(true)}
+              />
               <Divider />
               <TopTool icon={<RotateCw className="size-4" />} label="Rotate" onClick={rotateCurrent} />
               <TopTool icon={<Scissors className="size-4" />} label="Extract" onClick={handleSplitCurrent} />
