@@ -426,7 +426,7 @@ function EditorPage() {
           y: ph - it.y * sy - size,
           size,
           font: editFont,
-          color: rgb(0, 0, 0),
+          color: rgb(it.color.r / 255, it.color.g / 255, it.color.b / 255),
         });
       } catch {
         // Original font can't encode the new characters — fall back to standard.
@@ -435,7 +435,7 @@ function EditorPage() {
           y: ph - it.y * sy - size,
           size,
           font: getExportFont(it, embeddedFonts),
-          color: rgb(0, 0, 0),
+          color: rgb(it.color.r / 255, it.color.g / 255, it.color.b / 255),
         });
       }
     }
