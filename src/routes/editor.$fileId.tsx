@@ -361,6 +361,14 @@ function EditorPage() {
           </aside>
 
           <main className="col-span-12 lg:col-span-8">
+            {tool !== "select" && (
+              <div className="mb-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-xs text-foreground">
+                {tool === "edit" && "Click any highlighted text box to edit it in place. Enter to save, Esc to cancel."}
+                {tool === "text" && "Click anywhere on the page to add new text."}
+                {tool === "highlight" && "Click to drop a yellow highlight."}
+                {tool === "sign" && "Click on the page to place your signature."}
+              </div>
+            )}
             <div className="overflow-auto rounded-2xl border border-border bg-stone-100 p-6">
               {pageImages[currentPage] && (
                 <div
