@@ -633,9 +633,17 @@ function EditorPage() {
               Save
             </button>
             <button
-              onClick={handleDownload}
+              onClick={handleApplyPreview}
               disabled={saving}
               className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-accent disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+              Apply &amp; Preview
+            </button>
+            <button
+              onClick={handleDownload}
+              disabled={saving}
+              className="flex items-center gap-2 rounded-full border border-border bg-white px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
             >
               <Download className="size-4" />
               Export
