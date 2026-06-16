@@ -44,6 +44,7 @@ type Tool = "select" | "edit" | "text" | "highlight" | "sign";
 
 // A single text run extracted from the PDF page. Coordinates are in CSS pixels
 // of the rendered page (1:1 with the displayed image).
+type RGB = { r: number; g: number; b: number };
 type TextItem = {
   id: string;
   page: number;
@@ -56,7 +57,8 @@ type TextItem = {
   fontWeight: number;
   fontStyle: "normal" | "italic";
   psFontName: string | null;
-  background: { r: number; g: number; b: number };
+  background: RGB;
+  color: RGB;
   originalStr: string;
   str: string;
 };
