@@ -219,6 +219,20 @@ function EditorPage() {
     if (!pdfBytes) throw new Error("No PDF");
     const doc = await PDFDocument.load(pdfBytes);
     const font = await doc.embedFont(StandardFonts.Helvetica);
+    const embeddedFonts = {
+      helvetica: font,
+      helveticaBold: await doc.embedFont(StandardFonts.HelveticaBold),
+      helveticaItalic: await doc.embedFont(StandardFonts.HelveticaOblique),
+      helveticaBoldItalic: await doc.embedFont(StandardFonts.HelveticaBoldOblique),
+      times: await doc.embedFont(StandardFonts.TimesRoman),
+      timesBold: await doc.embedFont(StandardFonts.TimesRomanBold),
+      timesItalic: await doc.embedFont(StandardFonts.TimesRomanItalic),
+      timesBoldItalic: await doc.embedFont(StandardFonts.TimesRomanBoldItalic),
+      courier: await doc.embedFont(StandardFonts.Courier),
+      courierBold: await doc.embedFont(StandardFonts.CourierBold),
+      courierItalic: await doc.embedFont(StandardFonts.CourierOblique),
+      courierBoldItalic: await doc.embedFont(StandardFonts.CourierBoldOblique),
+    };
     const pages = doc.getPages();
 
     pageRotations.forEach((rot, i) => {
@@ -239,21 +253,24 @@ function EditorPage() {
       const sx = pw / rendered.w;
       const sy = ph / rendered.h;
 
-      // Cover the original text with a white rectangle (slightly padded)
-      const pad = 2;
+      const editFont = getExportFont(it, embeddedFonts);
+      const size = it.fontSize * sy;
+      const editedWidth = editFont.widthOfTextAtSize(it.str, size);
+      const coverWidth = Math.max(it.width * sx, editedWidth);
+      // Cover only the original glyph area with the sampled page background.
+      const pad = Math.max(0.35, size * 0.04);
       page.drawRectangle({
         x: it.x * sx - pad,
         y: ph - (it.y + it.height) * sy - pad,
-        width: it.width * sx + pad * 2,
+        width: coverWidth + pad * 2,
         height: it.height * sy + pad * 2,
-        color: rgb(1, 1, 1),
+        color: rgb(it.background.r / 255, it.background.g / 255, it.background.b / 255),
       });
-      const size = it.fontSize * sy;
       page.drawText(it.str, {
         x: it.x * sx,
         y: ph - it.y * sy - size,
         size,
-        font,
+        font: editFont,
         color: rgb(0, 0, 0),
       });
     }
