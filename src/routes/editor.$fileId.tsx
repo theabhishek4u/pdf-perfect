@@ -491,6 +491,18 @@ function EditorPage() {
     setSaving(false);
   }
 
+  async function handleApplyPreview() {
+    setSaving(true);
+    try {
+      const out = await buildEditedPdf();
+      setPreview(fileId, out, fileName);
+      navigate({ to: "/preview/$fileId", params: { fileId } });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+    setSaving(false);
+  }
+
   async function handleSave() {
     setSaving(true);
     try {
