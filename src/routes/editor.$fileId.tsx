@@ -577,13 +577,21 @@ function EditorPage() {
                 onClick={() => setShowSig(true)}
               />
               <Divider />
-              <TopTool icon={<RotateCw className="size-4" />} label="Rotate" onClick={rotateCurrent} />
+              <TopTool
+                icon={<RotateCw className="size-4" />}
+                label="Rotate"
+                onClick={rotateCurrent}
+              />
               <TopTool
                 icon={<Scissors className="size-4" />}
                 label="Extract"
                 onClick={handleSplitCurrent}
               />
-              <TopTool icon={<Trash2 className="size-4" />} label="Delete page" onClick={deleteCurrent} />
+              <TopTool
+                icon={<Trash2 className="size-4" />}
+                label="Delete page"
+                onClick={deleteCurrent}
+              />
               <Divider />
               <label>
                 <div className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">
