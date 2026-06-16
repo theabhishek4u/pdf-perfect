@@ -172,10 +172,13 @@ function EditorPage() {
       imgs.push(canvas.toDataURL("image/png"));
       sizes.push({ w: viewport.width, h: viewport.height });
 
-      const tc = await page.getTextContent();
-      for (const it of tc.items as any[]) {
+      const tc = (await page.getTextContent()) as {
+        items: PdfTextContentItem[];
+        styles: Record<string, PdfTextStyle>;
+      };
+      for (const it of tc.items) {
         if (!it.str || !it.str.trim()) continue;
-        const style = (tc.styles as Record<string, any>)[it.fontName] || {};
+        const style = tc.styles[it.fontName] || {};
         const tx = pdfjsLib.Util.transform(viewport.transform, it.transform);
         // tx[0..3] is the matrix, tx[4]/tx[5] is the position.
         // Font size is the vertical scale of the matrix.
