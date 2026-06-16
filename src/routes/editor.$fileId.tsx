@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont } from "pdf-lib";
 import { pdfjsLib } from "@/lib/pdfjs-setup";
 import { SignaturePad } from "@/components/signature-pad";
 import { toast } from "sonner";
@@ -38,6 +38,10 @@ type TextItem = {
   width: number;
   height: number;
   fontSize: number;
+  fontFamily: string;
+  fontWeight: number;
+  fontStyle: "normal" | "italic";
+  background: { r: number; g: number; b: number };
   originalStr: string;
   str: string;
 };
@@ -45,9 +49,91 @@ type TextItem = {
 type Annotation =
   | { id: string; type: "text"; page: number; x: number; y: number; text: string; size: number }
   | { id: string; type: "highlight"; page: number; x: number; y: number; w: number; h: number }
-  | { id: string; type: "image"; page: number; x: number; y: number; w: number; h: number; dataUrl: string };
+  | {
+      id: string;
+      type: "image";
+      page: number;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      dataUrl: string;
+    };
+
+type PdfTextStyle = { fontFamily?: string; ascent?: number; descent?: number };
+type PdfTextContentItem = { str?: string; width?: number; transform: number[]; fontName: string };
 
 const RENDER_SCALE = 1.5;
+
+function inferFontInfo(rawName: string) {
+  const name = rawName.toLowerCase();
+  const isSerif = /times|serif|roman/.test(name);
+  const isMono = /courier|mono|code/.test(name);
+  return {
+    family: isSerif
+      ? "Times New Roman, Times, serif"
+      : isMono
+        ? "Courier New, Courier, monospace"
+        : "Helvetica, Arial, sans-serif",
+    weight: /bold|black|heavy|semibold|demi/.test(name) ? 700 : 400,
+    style: /italic|oblique/.test(name) ? ("italic" as const) : ("normal" as const),
+  };
+}
+
+function sampleTextBackground(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  const sx = Math.max(0, Math.floor(x));
+  const sy = Math.max(0, Math.floor(y));
+  const sw = Math.max(1, Math.min(ctx.canvas.width - sx, Math.ceil(width)));
+  const sh = Math.max(1, Math.min(ctx.canvas.height - sy, Math.ceil(height)));
+  try {
+    const data = ctx.getImageData(sx, sy, sw, sh).data;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      // Prefer light/background pixels and ignore dark glyph pixels.
+      if (data[i] + data[i + 1] + data[i + 2] > 560) {
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+        count++;
+      }
+    }
+    if (!count) return { r: 255, g: 255, b: 255 };
+    return { r: Math.round(r / count), g: Math.round(g / count), b: Math.round(b / count) };
+  } catch {
+    return { r: 255, g: 255, b: 255 };
+  }
+}
+
+function getExportFont(item: TextItem, fonts: Record<string, PDFFont>) {
+  const family = item.fontFamily.toLowerCase();
+  const bold = item.fontWeight >= 600;
+  const italic = item.fontStyle === "italic";
+  if (/times|serif|roman/.test(family)) {
+    if (bold && italic) return fonts.timesBoldItalic;
+    if (bold) return fonts.timesBold;
+    if (italic) return fonts.timesItalic;
+    return fonts.times;
+  }
+  if (/courier|mono|code/.test(family)) {
+    if (bold && italic) return fonts.courierBoldItalic;
+    if (bold) return fonts.courierBold;
+    if (italic) return fonts.courierItalic;
+    return fonts.courier;
+  }
+  if (bold && italic) return fonts.helveticaBoldItalic;
+  if (bold) return fonts.helveticaBold;
+  if (italic) return fonts.helveticaItalic;
+  return fonts.helvetica;
+}
 
 function EditorPage() {
   const { fileId } = Route.useParams();
@@ -65,6 +151,7 @@ function EditorPage() {
   const [pageRotations, setPageRotations] = useState<number[]>([]);
   const [showSig, setShowSig] = useState(false);
   const [pendingSig, setPendingSig] = useState<string | null>(null);
+  const [activeTextId, setActiveTextId] = useState<string | null>(null);
 
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -85,24 +172,37 @@ function EditorPage() {
       imgs.push(canvas.toDataURL("image/png"));
       sizes.push({ w: viewport.width, h: viewport.height });
 
-      const tc = await page.getTextContent();
-      for (const it of tc.items as any[]) {
+      const tc = (await page.getTextContent()) as {
+        items: PdfTextContentItem[];
+        styles: Record<string, PdfTextStyle>;
+      };
+      for (const it of tc.items) {
         if (!it.str || !it.str.trim()) continue;
+        const style = tc.styles[it.fontName] || {};
         const tx = pdfjsLib.Util.transform(viewport.transform, it.transform);
         // tx[0..3] is the matrix, tx[4]/tx[5] is the position.
         // Font size is the vertical scale of the matrix.
         const fontSize = Math.hypot(tx[2], tx[3]);
         const width = (it.width || it.str.length * fontSize * 0.5) * viewport.scale;
-        // tx[5] is the baseline Y. Top of text ≈ baseline - fontSize * 0.82
-        const top = tx[5] - fontSize * 0.82;
+        const ascent = typeof style.ascent === "number" ? style.ascent : 0.82;
+        const descent = typeof style.descent === "number" ? style.descent : -0.18;
+        // tx[5] is the baseline Y. Use PDF.js font metrics when available so
+        // the edit box hugs the glyphs instead of creating a visible white band.
+        const top = tx[5] - fontSize * ascent;
+        const height = Math.max(fontSize * (ascent - descent), fontSize * 0.9);
+        const fontInfo = inferFontInfo(`${it.fontName || ""} ${style.fontFamily || ""}`);
         items.push({
           id: `t-${i}-${items.length}`,
           page: i - 1,
           x: tx[4],
           y: top,
           width,
-          height: fontSize * 1.05,
+          height,
           fontSize,
+          fontFamily: style.fontFamily || fontInfo.family,
+          fontWeight: fontInfo.weight,
+          fontStyle: fontInfo.style,
+          background: sampleTextBackground(ctx, tx[4], top, width, height),
           originalStr: it.str,
           str: it.str,
         });
@@ -131,9 +231,7 @@ function EditorPage() {
   }, [fileId, navigate, renderPdf]);
 
   function commitTextEdit(id: string, newText: string) {
-    setTextItems((items) =>
-      items.map((it) => (it.id === id ? { ...it, str: newText } : it)),
-    );
+    setTextItems((items) => items.map((it) => (it.id === id ? { ...it, str: newText } : it)));
   }
 
   function handleCanvasClick(e: React.MouseEvent) {
@@ -152,12 +250,29 @@ function EditorPage() {
     } else if (tool === "highlight") {
       setAnnotations((a) => [
         ...a,
-        { id: crypto.randomUUID(), type: "highlight", page: currentPage, x, y: y - 8, w: 120, h: 16 },
+        {
+          id: crypto.randomUUID(),
+          type: "highlight",
+          page: currentPage,
+          x,
+          y: y - 8,
+          w: 120,
+          h: 16,
+        },
       ]);
     } else if (tool === "sign" && pendingSig) {
       setAnnotations((a) => [
         ...a,
-        { id: crypto.randomUUID(), type: "image", page: currentPage, x, y, w: 140, h: 50, dataUrl: pendingSig },
+        {
+          id: crypto.randomUUID(),
+          type: "image",
+          page: currentPage,
+          x,
+          y,
+          w: 140,
+          h: 50,
+          dataUrl: pendingSig,
+        },
       ]);
     }
   }
@@ -166,6 +281,20 @@ function EditorPage() {
     if (!pdfBytes) throw new Error("No PDF");
     const doc = await PDFDocument.load(pdfBytes);
     const font = await doc.embedFont(StandardFonts.Helvetica);
+    const embeddedFonts = {
+      helvetica: font,
+      helveticaBold: await doc.embedFont(StandardFonts.HelveticaBold),
+      helveticaItalic: await doc.embedFont(StandardFonts.HelveticaOblique),
+      helveticaBoldItalic: await doc.embedFont(StandardFonts.HelveticaBoldOblique),
+      times: await doc.embedFont(StandardFonts.TimesRoman),
+      timesBold: await doc.embedFont(StandardFonts.TimesRomanBold),
+      timesItalic: await doc.embedFont(StandardFonts.TimesRomanItalic),
+      timesBoldItalic: await doc.embedFont(StandardFonts.TimesRomanBoldItalic),
+      courier: await doc.embedFont(StandardFonts.Courier),
+      courierBold: await doc.embedFont(StandardFonts.CourierBold),
+      courierItalic: await doc.embedFont(StandardFonts.CourierOblique),
+      courierBoldItalic: await doc.embedFont(StandardFonts.CourierBoldOblique),
+    };
     const pages = doc.getPages();
 
     pageRotations.forEach((rot, i) => {
@@ -186,21 +315,24 @@ function EditorPage() {
       const sx = pw / rendered.w;
       const sy = ph / rendered.h;
 
-      // Cover the original text with a white rectangle (slightly padded)
-      const pad = 2;
+      const editFont = getExportFont(it, embeddedFonts);
+      const size = it.fontSize * sy;
+      const editedWidth = editFont.widthOfTextAtSize(it.str, size);
+      const coverWidth = Math.max(it.width * sx, editedWidth);
+      // Cover only the original glyph area with the sampled page background.
+      const pad = Math.max(0.35, size * 0.04);
       page.drawRectangle({
         x: it.x * sx - pad,
         y: ph - (it.y + it.height) * sy - pad,
-        width: it.width * sx + pad * 2,
+        width: coverWidth + pad * 2,
         height: it.height * sy + pad * 2,
-        color: rgb(1, 1, 1),
+        color: rgb(it.background.r / 255, it.background.g / 255, it.background.b / 255),
       });
-      const size = it.fontSize * sy;
       page.drawText(it.str, {
         x: it.x * sx,
         y: ph - it.y * sy - size,
         size,
-        font,
+        font: editFont,
         color: rgb(0, 0, 0),
       });
     }
@@ -336,7 +468,13 @@ function EditorPage() {
   }
 
   const cursor =
-    tool === "text" ? "text" : tool === "highlight" ? "crosshair" : tool === "sign" ? "copy" : "default";
+    tool === "text"
+      ? "text"
+      : tool === "highlight"
+        ? "crosshair"
+        : tool === "sign"
+          ? "copy"
+          : "default";
 
   const currentSize = pageSizes[currentPage];
   const currentRotation = pageRotations[currentPage] || 0;
@@ -408,15 +546,52 @@ function EditorPage() {
           {/* Sejda-style horizontal tools bar */}
           <div className="sticky top-0 z-20 border-b border-border bg-white shadow-sm">
             <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-center gap-1 px-6 py-2">
-              <TopTool icon={<MousePointer2 className="size-4" />} label="Select" active={tool === "select"} onClick={() => setTool("select")} />
-              <TopTool icon={<Edit3 className="size-4" />} label="Edit text" active={tool === "edit"} onClick={() => setTool("edit")} />
-              <TopTool icon={<Type className="size-4" />} label="Add text" active={tool === "text"} onClick={() => setTool("text")} />
-              <TopTool icon={<Highlighter className="size-4" />} label="Highlight" active={tool === "highlight"} onClick={() => setTool("highlight")} />
-              <TopTool icon={<PenTool className="size-4" />} label="Sign" active={tool === "sign"} onClick={() => setShowSig(true)} />
+              <TopTool
+                icon={<MousePointer2 className="size-4" />}
+                label="Select"
+                active={tool === "select"}
+                onClick={() => setTool("select")}
+              />
+              <TopTool
+                icon={<Edit3 className="size-4" />}
+                label="Edit text"
+                active={tool === "edit"}
+                onClick={() => setTool("edit")}
+              />
+              <TopTool
+                icon={<Type className="size-4" />}
+                label="Add text"
+                active={tool === "text"}
+                onClick={() => setTool("text")}
+              />
+              <TopTool
+                icon={<Highlighter className="size-4" />}
+                label="Highlight"
+                active={tool === "highlight"}
+                onClick={() => setTool("highlight")}
+              />
+              <TopTool
+                icon={<PenTool className="size-4" />}
+                label="Sign"
+                active={tool === "sign"}
+                onClick={() => setShowSig(true)}
+              />
               <Divider />
-              <TopTool icon={<RotateCw className="size-4" />} label="Rotate" onClick={rotateCurrent} />
-              <TopTool icon={<Scissors className="size-4" />} label="Extract" onClick={handleSplitCurrent} />
-              <TopTool icon={<Trash2 className="size-4" />} label="Delete page" onClick={deleteCurrent} />
+              <TopTool
+                icon={<RotateCw className="size-4" />}
+                label="Rotate"
+                onClick={rotateCurrent}
+              />
+              <TopTool
+                icon={<Scissors className="size-4" />}
+                label="Extract"
+                onClick={handleSplitCurrent}
+              />
+              <TopTool
+                icon={<Trash2 className="size-4" />}
+                label="Delete page"
+                onClick={deleteCurrent}
+              />
               <Divider />
               <label>
                 <div className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">
@@ -474,7 +649,8 @@ function EditorPage() {
 
           {tool !== "select" && (
             <div className="mx-auto mt-3 max-w-[900px] rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-center text-xs text-foreground">
-              {editing && "Click any text on the page and type to edit it in place. Click outside to save."}
+              {editing &&
+                "Click any text on the page and type to edit it in place. Click outside to save."}
               {tool === "text" && "Click anywhere on the page to add new text."}
               {tool === "highlight" && "Click to drop a yellow highlight."}
               {tool === "sign" && "Click on the page to place your signature."}
@@ -508,6 +684,9 @@ function EditorPage() {
                     key={item.id}
                     item={item}
                     editing={editing}
+                    active={activeTextId === item.id}
+                    onActivate={() => setActiveTextId(item.id)}
+                    onDeactivate={() => setActiveTextId((id) => (id === item.id ? null : id))}
                     onCommit={(v) => commitTextEdit(item.id, v)}
                   />
                 ))}
@@ -530,7 +709,13 @@ function EditorPage() {
                         <div
                           key={a.id}
                           className="absolute bg-yellow-300/40"
-                          style={{ left: a.x, top: a.y, width: a.w, height: a.h, pointerEvents: "none" }}
+                          style={{
+                            left: a.x,
+                            top: a.y,
+                            width: a.w,
+                            height: a.h,
+                            pointerEvents: "none",
+                          }}
                         />
                       );
                     return (
@@ -539,7 +724,13 @@ function EditorPage() {
                         src={a.dataUrl}
                         alt=""
                         className="absolute"
-                        style={{ left: a.x, top: a.y, width: a.w, height: a.h, pointerEvents: "none" }}
+                        style={{
+                          left: a.x,
+                          top: a.y,
+                          width: a.w,
+                          height: a.h,
+                          pointerEvents: "none",
+                        }}
                       />
                     );
                   })}
@@ -551,7 +742,6 @@ function EditorPage() {
     </div>
   );
 }
-
 function Divider() {
   return <div className="mx-1 h-6 w-px bg-border" />;
 }
@@ -588,10 +778,16 @@ function TopTool({
 function EditableTextRun({
   item,
   editing,
+  active,
+  onActivate,
+  onDeactivate,
   onCommit,
 }: {
   item: TextItem;
   editing: boolean;
+  active: boolean;
+  onActivate: () => void;
+  onDeactivate: () => void;
   onCommit: (v: string) => void;
 }) {
   const ref = useRef<HTMLSpanElement | null>(null);
@@ -615,14 +811,19 @@ function EditableTextRun({
       suppressContentEditableWarning
       spellCheck={false}
       onClick={(e) => {
-        if (editing) e.stopPropagation();
+        if (editing) {
+          e.stopPropagation();
+          onActivate();
+        }
       }}
+      onFocus={onActivate}
       onBlur={(e) => {
         const v = e.currentTarget.textContent ?? "";
         if (v !== lastSeenRef.current) {
           lastSeenRef.current = v;
           onCommit(v);
         }
+        onDeactivate();
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
@@ -638,13 +839,15 @@ function EditableTextRun({
         height: item.height,
         fontSize: item.fontSize,
         lineHeight: `${item.height}px`,
-        fontFamily: "Helvetica, Arial, sans-serif",
+        fontFamily: item.fontFamily,
+        fontWeight: item.fontWeight,
+        fontStyle: item.fontStyle,
         color: "#000",
-        // White background masks the rasterized original text underneath
-        background: editing || isModified ? "#fff" : "transparent",
-        // In edit mode, hide the rasterized text by painting white on top.
-        // The HTML text is visible on top of that background.
-        outline: editing ? "1px dashed rgba(59,130,246,0.5)" : isModified ? "1px solid rgba(59,130,246,0.4)" : "none",
+        background:
+          active || isModified
+            ? `rgb(${item.background.r}, ${item.background.g}, ${item.background.b})`
+            : "transparent",
+        outline: active ? "1px solid rgba(37,99,235,0.65)" : "none",
         padding: 0,
         margin: 0,
         whiteSpace: "pre",
@@ -652,10 +855,9 @@ function EditableTextRun({
         pointerEvents: editing ? "auto" : "none",
         // When NOT editing and unmodified, keep the HTML span invisible so the
         // user sees the original rasterized text from the page image.
-        opacity: editing || isModified ? 1 : 0,
+        opacity: active || isModified ? 1 : 0,
         userSelect: editing ? "text" : "none",
       }}
     />
   );
 }
-
