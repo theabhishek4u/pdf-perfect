@@ -44,6 +44,7 @@ type Tool = "select" | "edit" | "text" | "highlight" | "sign";
 
 // A single text run extracted from the PDF page. Coordinates are in CSS pixels
 // of the rendered page (1:1 with the displayed image).
+type RGB = { r: number; g: number; b: number };
 type TextItem = {
   id: string;
   page: number;
@@ -56,7 +57,8 @@ type TextItem = {
   fontWeight: number;
   fontStyle: "normal" | "italic";
   psFontName: string | null;
-  background: { r: number; g: number; b: number };
+  background: RGB;
+  color: RGB;
   originalStr: string;
   str: string;
 };
@@ -101,30 +103,32 @@ function sampleTextBackground(
   y: number,
   width: number,
   height: number,
-) {
+): { background: RGB; color: RGB } {
   const sx = Math.max(0, Math.floor(x));
   const sy = Math.max(0, Math.floor(y));
   const sw = Math.max(1, Math.min(ctx.canvas.width - sx, Math.ceil(width)));
   const sh = Math.max(1, Math.min(ctx.canvas.height - sy, Math.ceil(height)));
   try {
     const data = ctx.getImageData(sx, sy, sw, sh).data;
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    let count = 0;
+    let br = 0, bg = 0, bb = 0, bc = 0;
+    let fr = 0, fg = 0, fb = 0, fc = 0;
     for (let i = 0; i < data.length; i += 4) {
-      // Prefer light/background pixels and ignore dark glyph pixels.
-      if (data[i] + data[i + 1] + data[i + 2] > 560) {
-        r += data[i];
-        g += data[i + 1];
-        b += data[i + 2];
-        count++;
+      const sum = data[i] + data[i + 1] + data[i + 2];
+      if (sum > 560) {
+        br += data[i]; bg += data[i + 1]; bb += data[i + 2]; bc++;
+      } else if (sum < 380) {
+        fr += data[i]; fg += data[i + 1]; fb += data[i + 2]; fc++;
       }
     }
-    if (!count) return { r: 255, g: 255, b: 255 };
-    return { r: Math.round(r / count), g: Math.round(g / count), b: Math.round(b / count) };
+    const background = bc
+      ? { r: Math.round(br / bc), g: Math.round(bg / bc), b: Math.round(bb / bc) }
+      : { r: 255, g: 255, b: 255 };
+    const color = fc
+      ? { r: Math.round(fr / fc), g: Math.round(fg / fc), b: Math.round(fb / fc) }
+      : { r: 0, g: 0, b: 0 };
+    return { background, color };
   } catch {
-    return { r: 255, g: 255, b: 255 };
+    return { background: { r: 255, g: 255, b: 255 }, color: { r: 0, g: 0, b: 0 } };
   }
 }
 
@@ -223,6 +227,7 @@ function EditorPage() {
         const fontInfo = inferFontInfo(
           `${psFontName || ""} ${it.fontName || ""} ${style.fontFamily || ""}`,
         );
+        const sampled = sampleTextBackground(ctx, tx[4], top, width, height);
         items.push({
           id: `t-${i}-${items.length}`,
           page: i - 1,
@@ -235,7 +240,8 @@ function EditorPage() {
           fontWeight: fontInfo.weight,
           fontStyle: fontInfo.style,
           psFontName,
-          background: sampleTextBackground(ctx, tx[4], top, width, height),
+          background: sampled.background,
+          color: sampled.color,
           originalStr: it.str,
           str: it.str,
         });
@@ -273,6 +279,16 @@ function EditorPage() {
 
   function commitTextEdit(id: string, newText: string) {
     setTextItems((items) => items.map((it) => (it.id === id ? { ...it, str: newText } : it)));
+  }
+
+  function updateTextStyle(id: string, patch: Partial<TextItem>) {
+    setTextItems((items) => items.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  }
+
+  function resetTextItem(id: string) {
+    setTextItems((items) =>
+      items.map((it) => (it.id === id ? { ...it, str: it.originalStr } : it)),
+    );
   }
 
   function handleCanvasClick(e: React.MouseEvent) {
@@ -420,7 +436,7 @@ function EditorPage() {
           y: ph - it.y * sy - size,
           size,
           font: editFont,
-          color: rgb(0, 0, 0),
+          color: rgb(it.color.r / 255, it.color.g / 255, it.color.b / 255),
         });
       } catch {
         // Original font can't encode the new characters — fall back to standard.
@@ -429,7 +445,7 @@ function EditorPage() {
           y: ph - it.y * sy - size,
           size,
           font: getExportFont(it, embeddedFonts),
-          color: rgb(0, 0, 0),
+          color: rgb(it.color.r / 255, it.color.g / 255, it.color.b / 255),
         });
       }
     }
@@ -590,6 +606,7 @@ function EditorPage() {
   const currentRotation = pageRotations[currentPage] || 0;
   const editing = tool === "edit";
   const pageTextItems = textItems.filter((t) => t.page === currentPage);
+  const activeItem = textItems.find((t) => t.id === activeTextId) || null;
   const modifiedCount = textItems.filter((t) => t.str !== t.originalStr).length;
 
   return (
@@ -806,8 +823,21 @@ function EditorPage() {
                     onActivate={() => setActiveTextId(item.id)}
                     onDeactivate={() => setActiveTextId((id) => (id === item.id ? null : id))}
                     onCommit={(v) => commitTextEdit(item.id, v)}
+                    onCancel={() => {
+                      resetTextItem(item.id);
+                      setActiveTextId(null);
+                    }}
                   />
                 ))}
+
+                {editing && activeItem && activeItem.page === currentPage && (
+                  <FloatingTextToolbar
+                    item={activeItem}
+                    containerWidth={currentSize.w}
+                    onChange={(patch) => updateTextStyle(activeItem.id, patch)}
+                    onReset={() => resetTextItem(activeItem.id)}
+                  />
+                )}
 
                 {annotations
                   .filter((a) => a.page === currentPage)
@@ -906,8 +936,6 @@ function TopTool({
 
 /**
  * A single editable text run rendered as an absolutely positioned contentEditable span.
- * Its initial textContent is set once on mount via a ref so React never overwrites
- * what the user types. On blur the new value is committed back to parent state.
  */
 function EditableTextRun({
   item,
@@ -916,6 +944,7 @@ function EditableTextRun({
   onActivate,
   onDeactivate,
   onCommit,
+  onCancel,
 }: {
   item: TextItem;
   editing: boolean;
@@ -923,12 +952,12 @@ function EditableTextRun({
   onActivate: () => void;
   onDeactivate: () => void;
   onCommit: (v: string) => void;
+  onCancel: () => void;
 }) {
   const ref = useRef<HTMLSpanElement | null>(null);
   const lastSeenRef = useRef<string>(item.str);
+  const [hover, setHover] = useState(false);
 
-  // Initialize / sync DOM text only when the source value changes from outside
-  // (mount, reset, save round-trip) — never on every render.
   useEffect(() => {
     if (ref.current && ref.current.textContent !== item.str) {
       ref.current.textContent = item.str;
@@ -936,21 +965,61 @@ function EditableTextRun({
     }
   }, [item.str]);
 
+  // Place caret at the click position instead of selecting everything.
+  function placeCaretAt(clientX: number, clientY: number) {
+    const el = ref.current;
+    if (!el) return;
+    type CaretFnDoc = Document & {
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    };
+    const doc = document as CaretFnDoc;
+    let range: Range | null = null;
+    if (typeof doc.caretRangeFromPoint === "function") {
+      range = doc.caretRangeFromPoint(clientX, clientY);
+    } else if (typeof doc.caretPositionFromPoint === "function") {
+      const pos = doc.caretPositionFromPoint(clientX, clientY);
+      if (pos) {
+        range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.collapse(true);
+      }
+    }
+    if (!range) {
+      range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+    }
+    const sel = window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }
+
   const isModified = item.str !== item.originalStr;
+  const visible = active || isModified;
 
   return (
     <span
       ref={ref}
-      contentEditable={editing}
+      contentEditable={editing && active}
       suppressContentEditableWarning
       spellCheck={false}
-      onClick={(e) => {
-        if (editing) {
-          e.stopPropagation();
-          onActivate();
-        }
+      onMouseEnter={() => editing && setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onMouseDown={(e) => {
+        if (!editing) return;
+        e.stopPropagation();
+        e.preventDefault();
+        onActivate();
+        const x = e.clientX;
+        const y = e.clientY;
+        requestAnimationFrame(() => {
+          ref.current?.focus();
+          placeCaretAt(x, y);
+        });
       }}
-      onFocus={onActivate}
       onBlur={(e) => {
         const v = e.currentTarget.textContent ?? "";
         if (v !== lastSeenRef.current) {
@@ -962,6 +1031,10 @@ function EditableTextRun({
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
+          (e.currentTarget as HTMLSpanElement).blur();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          onCancel();
           (e.currentTarget as HTMLSpanElement).blur();
         }
       }}
@@ -976,22 +1049,127 @@ function EditableTextRun({
         fontFamily: item.fontFamily,
         fontWeight: item.fontWeight,
         fontStyle: item.fontStyle,
-        color: "#000",
-        background:
-          active || isModified
-            ? `rgb(${item.background.r}, ${item.background.g}, ${item.background.b})`
-            : "transparent",
-        outline: active ? "1px solid rgba(37,99,235,0.65)" : "none",
+        color: `rgb(${item.color.r}, ${item.color.g}, ${item.color.b})`,
+        background: visible
+          ? `rgb(${item.background.r}, ${item.background.g}, ${item.background.b})`
+          : "transparent",
+        outline: active
+          ? "1px solid rgba(37,99,235,0.75)"
+          : hover && editing
+            ? "1px dashed rgba(37,99,235,0.45)"
+            : "none",
         padding: 0,
         margin: 0,
         whiteSpace: "pre",
         cursor: editing ? "text" : "default",
         pointerEvents: editing ? "auto" : "none",
-        // When NOT editing and unmodified, keep the HTML span invisible so the
-        // user sees the original rasterized text from the page image.
-        opacity: active || isModified ? 1 : 0,
+        opacity: visible ? 1 : hover && editing ? 0.001 : 0,
         userSelect: editing ? "text" : "none",
       }}
     />
+  );
+}
+
+function FloatingTextToolbar({
+  item,
+  containerWidth,
+  onChange,
+  onReset,
+}: {
+  item: TextItem;
+  containerWidth: number;
+  onChange: (patch: Partial<TextItem>) => void;
+  onReset: () => void;
+}) {
+  const TOOLBAR_W = 320;
+  const left = Math.max(8, Math.min(containerWidth - TOOLBAR_W - 8, item.x));
+  const top = Math.max(8, item.y - 44);
+  const colorHex = `#${[item.color.r, item.color.g, item.color.b]
+    .map((v) => v.toString(16).padStart(2, "0"))
+    .join("")}`;
+  return (
+    <div
+      onMouseDown={(e) => e.preventDefault()}
+      className="absolute z-30 flex items-center gap-1 rounded-lg border border-border bg-white px-2 py-1 shadow-lg"
+      style={{ left, top, width: TOOLBAR_W }}
+    >
+      <button
+        onClick={() => onChange({ fontWeight: item.fontWeight >= 600 ? 400 : 700 })}
+        className={`grid size-7 place-items-center rounded text-sm font-bold ${
+          item.fontWeight >= 600 ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+        }`}
+        title="Bold"
+      >
+        B
+      </button>
+      <button
+        onClick={() =>
+          onChange({ fontStyle: item.fontStyle === "italic" ? "normal" : "italic" })
+        }
+        className={`grid size-7 place-items-center rounded text-sm italic ${
+          item.fontStyle === "italic" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+        }`}
+        title="Italic"
+      >
+        I
+      </button>
+      <div className="mx-1 h-5 w-px bg-border" />
+      <button
+        onClick={() => onChange({ fontSize: Math.max(4, item.fontSize - 1) })}
+        className="grid size-7 place-items-center rounded text-sm hover:bg-muted"
+        title="Decrease size"
+      >
+        −
+      </button>
+      <input
+        type="number"
+        value={Math.round(item.fontSize)}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value);
+          if (!isNaN(v) && v > 0) onChange({ fontSize: v });
+        }}
+        className="h-7 w-12 rounded border border-border bg-background px-1 text-center text-xs"
+      />
+      <button
+        onClick={() => onChange({ fontSize: item.fontSize + 1 })}
+        className="grid size-7 place-items-center rounded text-sm hover:bg-muted"
+        title="Increase size"
+      >
+        +
+      </button>
+      <div className="mx-1 h-5 w-px bg-border" />
+      <label
+        className="grid size-7 cursor-pointer place-items-center rounded hover:bg-muted"
+        title="Text color"
+      >
+        <span
+          className="block size-4 rounded border border-border"
+          style={{ background: colorHex }}
+        />
+        <input
+          type="color"
+          value={colorHex}
+          onChange={(e) => {
+            const hex = e.target.value;
+            onChange({
+              color: {
+                r: parseInt(hex.slice(1, 3), 16),
+                g: parseInt(hex.slice(3, 5), 16),
+                b: parseInt(hex.slice(5, 7), 16),
+              },
+            });
+          }}
+          className="hidden"
+        />
+      </label>
+      <div className="mx-1 h-5 w-px bg-border" />
+      <button
+        onClick={onReset}
+        className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+        title="Reset to original (Esc)"
+      >
+        Reset
+      </button>
+    </div>
   );
 }
