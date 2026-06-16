@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont } from "pdf-lib";
 import { pdfjsLib } from "@/lib/pdfjs-setup";
 import { SignaturePad } from "@/components/signature-pad";
 import { toast } from "sonner";
@@ -49,7 +49,19 @@ type TextItem = {
 type Annotation =
   | { id: string; type: "text"; page: number; x: number; y: number; text: string; size: number }
   | { id: string; type: "highlight"; page: number; x: number; y: number; w: number; h: number }
-  | { id: string; type: "image"; page: number; x: number; y: number; w: number; h: number; dataUrl: string };
+  | {
+      id: string;
+      type: "image";
+      page: number;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      dataUrl: string;
+    };
+
+type PdfTextStyle = { fontFamily?: string; ascent?: number; descent?: number };
+type PdfTextContentItem = { str?: string; width?: number; transform: number[]; fontName: string };
 
 const RENDER_SCALE = 1.5;
 
@@ -58,13 +70,23 @@ function inferFontInfo(rawName: string) {
   const isSerif = /times|serif|roman/.test(name);
   const isMono = /courier|mono|code/.test(name);
   return {
-    family: isSerif ? "Times New Roman, Times, serif" : isMono ? "Courier New, Courier, monospace" : "Helvetica, Arial, sans-serif",
+    family: isSerif
+      ? "Times New Roman, Times, serif"
+      : isMono
+        ? "Courier New, Courier, monospace"
+        : "Helvetica, Arial, sans-serif",
     weight: /bold|black|heavy|semibold|demi/.test(name) ? 700 : 400,
     style: /italic|oblique/.test(name) ? ("italic" as const) : ("normal" as const),
   };
 }
 
-function sampleTextBackground(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
+function sampleTextBackground(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
   const sx = Math.max(0, Math.floor(x));
   const sy = Math.max(0, Math.floor(y));
   const sw = Math.max(1, Math.min(ctx.canvas.width - sx, Math.ceil(width)));
@@ -91,7 +113,7 @@ function sampleTextBackground(ctx: CanvasRenderingContext2D, x: number, y: numbe
   }
 }
 
-function getExportFont(item: TextItem, fonts: Record<string, any>) {
+function getExportFont(item: TextItem, fonts: Record<string, PDFFont>) {
   const family = item.fontFamily.toLowerCase();
   const bold = item.fontWeight >= 600;
   const italic = item.fontStyle === "italic";
