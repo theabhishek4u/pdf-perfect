@@ -51,6 +51,7 @@ function EditorPage() {
   const [showSig, setShowSig] = useState(false);
   const [pendingSig, setPendingSig] = useState<string | null>(null);
   const [pageTextBoxes, setPageTextBoxes] = useState<TextBox[][]>([]);
+  const [editingBox, setEditingBox] = useState<{ page: number; idx: number; value: string } | null>(null);
 
   const overlayRef = useRef<HTMLDivElement>(null);
 
