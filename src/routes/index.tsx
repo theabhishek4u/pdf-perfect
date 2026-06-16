@@ -73,7 +73,7 @@ function LandingPage() {
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link
-              to="/signup"
+              to="/dashboard"
               className="rounded-full bg-primary px-8 py-4 text-base font-medium text-primary-foreground shadow-xl transition-all hover:bg-accent sm:text-lg"
             >
               Edit with AI Now
@@ -161,7 +161,7 @@ function LandingPage() {
             price="$0"
             features={["3 PDFs / day", "Basic AI summaries", "Annotation & sign", "Web access"]}
             cta="Start for free"
-            href="/signup"
+            href="/dashboard"
           />
           <PricingCard
             tier="Professional"
@@ -170,14 +170,14 @@ function LandingPage() {
             highlight
             features={["Unlimited AI", "Priority OCR", "Custom branding", "Audit trails", "Cloud storage"]}
             cta="Go Pro"
-            href="/signup"
+            href="/dashboard"
           />
           <PricingCard
             tier="Enterprise"
             price="Custom"
             features={["SSO & SCIM", "Dedicated success", "Air-gapped deployment", "Team workspaces"]}
             cta="Talk to sales"
-            href="/signup"
+            href="/dashboard"
           />
         </div>
       </section>
@@ -257,7 +257,7 @@ function LandingPage() {
             Free to start. No credit card. Just upload and edit.
           </p>
           <Link
-            to="/signup"
+            to="/dashboard"
             className="inline-flex rounded-full bg-paper px-8 py-4 text-base font-medium text-ink hover:bg-white"
           >
             Create your account

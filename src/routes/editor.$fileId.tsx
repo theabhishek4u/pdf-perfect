@@ -1,6 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import { pdfjsLib } from "@/lib/pdfjs-setup";
 import { SignaturePad } from "@/components/signature-pad";
@@ -19,8 +18,9 @@ import {
   Loader2,
   Edit3,
 } from "lucide-react";
+import { getPdf, updatePdf } from "@/lib/pdf-store";
 
-export const Route = createFileRoute("/_authenticated/editor/$fileId")({
+export const Route = createFileRoute("/editor/$fileId")({
   component: EditorPage,
   head: () => ({ meta: [{ title: "Editor — PDF Editify" }] }),
 });
@@ -40,7 +40,6 @@ function EditorPage() {
   const navigate = useNavigate();
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
   const [fileName, setFileName] = useState("document.pdf");
-  const [storagePath, setStoragePath] = useState("");
   const [pageImages, setPageImages] = useState<string[]>([]);
   const [pageSizes, setPageSizes] = useState<{ w: number; h: number }[]>([]);
   const [currentPage, setCurrentPage] = useState(0);
@@ -55,36 +54,7 @@ function EditorPage() {
 
   const overlayRef = useRef<HTMLDivElement>(null);
 
-  // Load file
-  useEffect(() => {
-    (async () => {
-      const { data: row, error } = await supabase
-        .from("pdf_files")
-        .select("*")
-        .eq("id", fileId)
-        .single();
-      if (error || !row) {
-        toast.error("File not found");
-        navigate({ to: "/dashboard" });
-        return;
-      }
-      setFileName(row.name);
-      setStoragePath(row.storage_path);
-      const { data: dl, error: dlErr } = await supabase.storage
-        .from("pdfs")
-        .download(row.storage_path);
-      if (dlErr || !dl) {
-        toast.error("Could not load PDF");
-        return;
-      }
-      const buf = new Uint8Array(await dl.arrayBuffer());
-      setPdfBytes(buf);
-      await renderPdf(buf);
-      setLoading(false);
-    })();
-  }, [fileId, navigate]);
-
-  async function renderPdf(buf: Uint8Array) {
+  const renderPdf = useCallback(async (buf: Uint8Array) => {
     const doc = await pdfjsLib.getDocument({ data: buf.slice() }).promise;
     const imgs: string[] = [];
     const sizes: { w: number; h: number }[] = [];
@@ -100,7 +70,6 @@ function EditorPage() {
       imgs.push(canvas.toDataURL("image/png"));
       sizes.push({ w: viewport.width, h: viewport.height });
 
-      // Extract text positions in canvas pixel coords
       const tc = await page.getTextContent();
       const boxes: TextBox[] = [];
       for (const it of tc.items as any[]) {
@@ -118,7 +87,22 @@ function EditorPage() {
     setPageSizes(sizes);
     setPageTextBoxes(allBoxes);
     setPageRotations(new Array(imgs.length).fill(0));
-  }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const item = await getPdf(fileId);
+      if (!item) {
+        toast.error("File not found");
+        navigate({ to: "/dashboard" });
+        return;
+      }
+      setFileName(item.record.name);
+      setPdfBytes(item.bytes);
+      await renderPdf(item.bytes);
+      setLoading(false);
+    })();
+  }, [fileId, navigate, renderPdf]);
 
   function handleCanvasClick(e: React.MouseEvent) {
     if (!overlayRef.current) return;
@@ -128,34 +112,16 @@ function EditorPage() {
     if (tool === "text") {
       const text = prompt("Enter text:");
       if (!text) return;
-      setAnnotations((a) => [
-        ...a,
-        { type: "text", page: currentPage, x, y, text, size: 16 },
-      ]);
+      setAnnotations((a) => [...a, { type: "text", page: currentPage, x, y, text, size: 16 }]);
     } else if (tool === "highlight") {
       setAnnotations((a) => [
         ...a,
-        {
-          type: "highlight",
-          page: currentPage,
-          x,
-          y: y - 8,
-          w: 120,
-          h: 16,
-        },
+        { type: "highlight", page: currentPage, x, y: y - 8, w: 120, h: 16 },
       ]);
     } else if (tool === "sign" && pendingSig) {
       setAnnotations((a) => [
         ...a,
-        {
-          type: "image",
-          page: currentPage,
-          x,
-          y,
-          w: 140,
-          h: 50,
-          dataUrl: pendingSig,
-        },
+        { type: "image", page: currentPage, x, y, w: 140, h: 50, dataUrl: pendingSig },
       ]);
     }
   }
@@ -166,7 +132,6 @@ function EditorPage() {
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const pages = doc.getPages();
 
-    // Apply rotations
     pageRotations.forEach((rot, i) => {
       if (rot && pages[i]) {
         const current = pages[i].getRotation().angle;
@@ -174,7 +139,6 @@ function EditorPage() {
       }
     });
 
-    // Apply annotations
     for (const ann of annotations) {
       const page = pages[ann.page];
       if (!page) continue;
@@ -210,7 +174,6 @@ function EditorPage() {
           height: ann.h * sy,
         });
       } else if (ann.type === "edit") {
-        // Cover original text with white, then draw new text
         const pad = 2;
         page.drawRectangle({
           x: ann.x * sx - pad,
@@ -254,22 +217,11 @@ function EditorPage() {
     setSaving(true);
     try {
       const out = await buildEditedPdf();
-      const { error } = await supabase.storage
-        .from("pdfs")
-        .upload(storagePath, new Blob([out as BlobPart], { type: "application/pdf" }), {
-          upsert: true,
-          contentType: "application/pdf",
-        });
-      if (error) throw error;
-      await supabase
-        .from("pdf_files")
-        .update({ updated_at: new Date().toISOString() })
-        .eq("id", fileId);
-      // Reload
+      await updatePdf(fileId, { bytes: out });
       setPdfBytes(out);
       await renderPdf(out);
       setAnnotations([]);
-      toast.success("Saved to your workspace");
+      toast.success("Saved");
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -335,13 +287,7 @@ function EditorPage() {
   }
 
   const cursor =
-    tool === "text"
-      ? "text"
-      : tool === "highlight"
-        ? "crosshair"
-        : tool === "sign"
-          ? "copy"
-          : "default";
+    tool === "text" ? "text" : tool === "highlight" ? "crosshair" : tool === "sign" ? "copy" : "default";
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6">
@@ -358,10 +304,7 @@ function EditorPage() {
       )}
 
       <div className="mb-6 flex items-center justify-between gap-4">
-        <Link
-          to="/dashboard"
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-        >
+        <Link to="/dashboard" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" />
           Back
         </Link>
@@ -394,7 +337,6 @@ function EditorPage() {
         </div>
       ) : (
         <div className="grid grid-cols-12 gap-4">
-          {/* Page thumbnails */}
           <aside className="col-span-12 lg:col-span-2">
             <div className="rounded-2xl border border-border bg-white/40 p-3 backdrop-blur">
               <div className="mb-2 px-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -406,22 +348,17 @@ function EditorPage() {
                     key={i}
                     onClick={() => setCurrentPage(i)}
                     className={`overflow-hidden rounded-lg border-2 transition-all ${
-                      i === currentPage
-                        ? "border-foreground"
-                        : "border-transparent hover:border-border"
+                      i === currentPage ? "border-foreground" : "border-transparent hover:border-border"
                     }`}
                   >
                     <img src={src} alt={`Page ${i + 1}`} className="w-full" />
-                    <div className="bg-white py-1 text-[10px] text-muted-foreground">
-                      {i + 1}
-                    </div>
+                    <div className="bg-white py-1 text-[10px] text-muted-foreground">{i + 1}</div>
                   </button>
                 ))}
               </div>
             </div>
           </aside>
 
-          {/* Canvas */}
           <main className="col-span-12 lg:col-span-8">
             <div className="overflow-auto rounded-2xl border border-border bg-stone-100 p-6">
               {pageImages[currentPage] && (
@@ -434,11 +371,8 @@ function EditorPage() {
                   <img
                     src={pageImages[currentPage]}
                     alt=""
-                    style={{
-                      transform: `rotate(${pageRotations[currentPage] || 0}deg)`,
-                    }}
+                    style={{ transform: `rotate(${pageRotations[currentPage] || 0}deg)` }}
                   />
-                  {/* Clickable text boxes when editing existing text */}
                   {tool === "edit" &&
                     (pageTextBoxes[currentPage] || []).map((b, i) => (
                       <button
@@ -474,12 +408,7 @@ function EditorPage() {
                           <span
                             key={i}
                             className="absolute font-sans text-black"
-                            style={{
-                              left: a.x,
-                              top: a.y,
-                              fontSize: a.size,
-                              pointerEvents: "none",
-                            }}
+                            style={{ left: a.x, top: a.y, fontSize: a.size, pointerEvents: "none" }}
                           >
                             {a.text}
                           </span>
@@ -489,13 +418,7 @@ function EditorPage() {
                           <div
                             key={i}
                             className="absolute bg-yellow-300/40"
-                            style={{
-                              left: a.x,
-                              top: a.y,
-                              width: a.w,
-                              height: a.h,
-                              pointerEvents: "none",
-                            }}
+                            style={{ left: a.x, top: a.y, width: a.w, height: a.h, pointerEvents: "none" }}
                           />
                         );
                       if (a.type === "edit")
@@ -522,13 +445,7 @@ function EditorPage() {
                           src={a.dataUrl}
                           alt=""
                           className="absolute"
-                          style={{
-                            left: a.x,
-                            top: a.y,
-                            width: a.w,
-                            height: a.h,
-                            pointerEvents: "none",
-                          }}
+                          style={{ left: a.x, top: a.y, width: a.w, height: a.h, pointerEvents: "none" }}
                         />
                       );
                     })}
@@ -540,54 +457,21 @@ function EditorPage() {
             </div>
           </main>
 
-          {/* Tools */}
           <aside className="col-span-12 lg:col-span-2">
             <div className="space-y-2 rounded-2xl border border-border bg-white/40 p-3 backdrop-blur">
               <div className="mb-2 px-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                 Tools
               </div>
-              <ToolBtn
-                icon={<Edit3 className="size-4" />}
-                label="Edit text"
-                active={tool === "edit"}
-                onClick={() => setTool(tool === "edit" ? "select" : "edit")}
-              />
-              <ToolBtn
-                icon={<Type className="size-4" />}
-                label="Add text"
-                active={tool === "text"}
-                onClick={() => setTool(tool === "text" ? "select" : "text")}
-              />
-              <ToolBtn
-                icon={<Highlighter className="size-4" />}
-                label="Highlight"
-                active={tool === "highlight"}
-                onClick={() => setTool(tool === "highlight" ? "select" : "highlight")}
-              />
-              <ToolBtn
-                icon={<PenTool className="size-4" />}
-                label="Sign"
-                active={tool === "sign"}
-                onClick={() => setShowSig(true)}
-              />
+              <ToolBtn icon={<Edit3 className="size-4" />} label="Edit text" active={tool === "edit"} onClick={() => setTool(tool === "edit" ? "select" : "edit")} />
+              <ToolBtn icon={<Type className="size-4" />} label="Add text" active={tool === "text"} onClick={() => setTool(tool === "text" ? "select" : "text")} />
+              <ToolBtn icon={<Highlighter className="size-4" />} label="Highlight" active={tool === "highlight"} onClick={() => setTool(tool === "highlight" ? "select" : "highlight")} />
+              <ToolBtn icon={<PenTool className="size-4" />} label="Sign" active={tool === "sign"} onClick={() => setShowSig(true)} />
 
               <div className="my-3 h-px bg-border" />
 
-              <ToolBtn
-                icon={<RotateCw className="size-4" />}
-                label="Rotate page"
-                onClick={rotateCurrent}
-              />
-              <ToolBtn
-                icon={<Scissors className="size-4" />}
-                label="Extract page"
-                onClick={handleSplitCurrent}
-              />
-              <ToolBtn
-                icon={<Trash2 className="size-4" />}
-                label="Delete page"
-                onClick={deleteCurrent}
-              />
+              <ToolBtn icon={<RotateCw className="size-4" />} label="Rotate page" onClick={rotateCurrent} />
+              <ToolBtn icon={<Scissors className="size-4" />} label="Extract page" onClick={handleSplitCurrent} />
+              <ToolBtn icon={<Trash2 className="size-4" />} label="Delete page" onClick={deleteCurrent} />
 
               <div className="my-3 h-px bg-border" />
 
