@@ -51,6 +51,7 @@ function EditorPage() {
   const [showSig, setShowSig] = useState(false);
   const [pendingSig, setPendingSig] = useState<string | null>(null);
   const [pageTextBoxes, setPageTextBoxes] = useState<TextBox[][]>([]);
+  const [editingBox, setEditingBox] = useState<{ page: number; idx: number; value: string } | null>(null);
 
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -360,6 +361,14 @@ function EditorPage() {
           </aside>
 
           <main className="col-span-12 lg:col-span-8">
+            {tool !== "select" && (
+              <div className="mb-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-xs text-foreground">
+                {tool === "edit" && "Click any highlighted text box to edit it in place. Enter to save, Esc to cancel."}
+                {tool === "text" && "Click anywhere on the page to add new text."}
+                {tool === "highlight" && "Click to drop a yellow highlight."}
+                {tool === "sign" && "Click on the page to place your signature."}
+              </div>
+            )}
             <div className="overflow-auto rounded-2xl border border-border bg-stone-100 p-6">
               {pageImages[currentPage] && (
                 <div
@@ -374,13 +383,13 @@ function EditorPage() {
                     style={{ transform: `rotate(${pageRotations[currentPage] || 0}deg)` }}
                   />
                   {tool === "edit" &&
-                    (pageTextBoxes[currentPage] || []).map((b, i) => (
-                      <button
-                        key={`tb-${i}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const next = prompt("Edit text:", b.str);
-                          if (next === null) return;
+                    (pageTextBoxes[currentPage] || []).map((b, i) => {
+                      const isEditing =
+                        editingBox?.page === currentPage && editingBox.idx === i;
+                      const minH = Math.max(b.h, 18);
+                      if (isEditing) {
+                        const commit = () => {
+                          const val = editingBox!.value;
                           setAnnotations((a) => [
                             ...a,
                             {
@@ -388,18 +397,56 @@ function EditorPage() {
                               page: currentPage,
                               x: b.x,
                               y: b.y,
-                              w: b.w,
+                              w: Math.max(b.w, val.length * b.size * 0.5),
                               h: b.h,
                               size: b.size,
-                              text: next,
+                              text: val,
                             },
                           ]);
-                        }}
-                        className="absolute border border-dashed border-primary/60 bg-primary/5 hover:bg-primary/20"
-                        style={{ left: b.x, top: b.y, width: b.w, height: b.h }}
-                        title={b.str}
-                      />
-                    ))}
+                          setEditingBox(null);
+                        };
+                        return (
+                          <input
+                            key={`tb-${i}`}
+                            autoFocus
+                            value={editingBox.value}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) =>
+                              setEditingBox({ ...editingBox, value: e.target.value })
+                            }
+                            onBlur={commit}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                commit();
+                              } else if (e.key === "Escape") {
+                                setEditingBox(null);
+                              }
+                            }}
+                            className="absolute z-20 border border-primary bg-white px-1 font-sans text-black outline-none"
+                            style={{
+                              left: b.x - 2,
+                              top: b.y - 2,
+                              minWidth: b.w + 40,
+                              height: minH + 4,
+                              fontSize: b.size,
+                            }}
+                          />
+                        );
+                      }
+                      return (
+                        <button
+                          key={`tb-${i}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingBox({ page: currentPage, idx: i, value: b.str });
+                          }}
+                          className="absolute z-10 border border-dashed border-primary/70 bg-primary/10 hover:bg-primary/25"
+                          style={{ left: b.x, top: b.y, width: Math.max(b.w, 12), height: minH }}
+                          title={`Click to edit: ${b.str}`}
+                        />
+                      );
+                    })}
                   {annotations
                     .filter((a) => a.page === currentPage)
                     .map((a, i) => {
