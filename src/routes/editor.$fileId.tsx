@@ -701,7 +701,13 @@ function EditorPage() {
                         <div
                           key={a.id}
                           className="absolute bg-yellow-300/40"
-                          style={{ left: a.x, top: a.y, width: a.w, height: a.h, pointerEvents: "none" }}
+                          style={{
+                            left: a.x,
+                            top: a.y,
+                            width: a.w,
+                            height: a.h,
+                            pointerEvents: "none",
+                          }}
                         />
                       );
                     return (
@@ -710,7 +716,13 @@ function EditorPage() {
                         src={a.dataUrl}
                         alt=""
                         className="absolute"
-                        style={{ left: a.x, top: a.y, width: a.w, height: a.h, pointerEvents: "none" }}
+                        style={{
+                          left: a.x,
+                          top: a.y,
+                          width: a.w,
+                          height: a.h,
+                          pointerEvents: "none",
+                        }}
                       />
                     );
                   })}
