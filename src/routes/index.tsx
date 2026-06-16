@@ -260,7 +260,7 @@ function LandingPage() {
             to="/dashboard"
             className="inline-flex rounded-full bg-paper px-8 py-4 text-base font-medium text-ink hover:bg-white"
           >
-            Create your account
+            Open the app — free
           </Link>
         </div>
       </section>
