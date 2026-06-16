@@ -1,8 +1,20 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont } from "pdf-lib";
+import {
+  PDFDocument,
+  StandardFonts,
+  rgb,
+  degrees,
+  PDFDict,
+  PDFName,
+  PDFRawStream,
+  decodePDFRawStream,
+  type PDFFont,
+} from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import { pdfjsLib } from "@/lib/pdfjs-setup";
 import { SignaturePad } from "@/components/signature-pad";
+import { setPreview } from "@/lib/preview-store";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -11,6 +23,7 @@ import {
   PenTool,
   Download,
   Save,
+  Eye,
   Scissors,
   Plus,
   RotateCw,
