@@ -17,6 +17,7 @@ import {
   Trash2,
   Loader2,
   Edit3,
+  MousePointer2,
 } from "lucide-react";
 import { getPdf, updatePdf } from "@/lib/pdf-store";
 
@@ -25,15 +26,28 @@ export const Route = createFileRoute("/editor/$fileId")({
   head: () => ({ meta: [{ title: "Editor — PDF Editify" }] }),
 });
 
-type Tool = "select" | "text" | "highlight" | "sign" | "edit";
+type Tool = "select" | "edit" | "text" | "highlight" | "sign";
 
-type TextBox = { x: number; y: number; w: number; h: number; size: number; str: string };
+// A single text run extracted from the PDF page. Coordinates are in CSS pixels
+// of the rendered page (1:1 with the displayed image).
+type TextItem = {
+  id: string;
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  originalStr: string;
+  str: string;
+};
 
 type Annotation =
-  | { type: "text"; page: number; x: number; y: number; text: string; size: number }
-  | { type: "highlight"; page: number; x: number; y: number; w: number; h: number }
-  | { type: "image"; page: number; x: number; y: number; w: number; h: number; dataUrl: string }
-  | { type: "edit"; page: number; x: number; y: number; w: number; h: number; size: number; text: string };
+  | { id: string; type: "text"; page: number; x: number; y: number; text: string; size: number }
+  | { id: string; type: "highlight"; page: number; x: number; y: number; w: number; h: number }
+  | { id: string; type: "image"; page: number; x: number; y: number; w: number; h: number; dataUrl: string };
+
+const RENDER_SCALE = 1.5;
 
 function EditorPage() {
   const { fileId } = Route.useParams();
@@ -45,13 +59,12 @@ function EditorPage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [tool, setTool] = useState<Tool>("select");
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [textItems, setTextItems] = useState<TextItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pageRotations, setPageRotations] = useState<number[]>([]);
   const [showSig, setShowSig] = useState(false);
   const [pendingSig, setPendingSig] = useState<string | null>(null);
-  const [pageTextBoxes, setPageTextBoxes] = useState<TextBox[][]>([]);
-  const [editingBox, setEditingBox] = useState<{ page: number; idx: number; value: string } | null>(null);
 
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -59,10 +72,11 @@ function EditorPage() {
     const doc = await pdfjsLib.getDocument({ data: buf.slice() }).promise;
     const imgs: string[] = [];
     const sizes: { w: number; h: number }[] = [];
-    const allBoxes: TextBox[][] = [];
+    const items: TextItem[] = [];
+
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i);
-      const viewport = page.getViewport({ scale: 1.5 });
+      const viewport = page.getViewport({ scale: RENDER_SCALE });
       const canvas = document.createElement("canvas");
       canvas.width = viewport.width;
       canvas.height = viewport.height;
@@ -72,21 +86,32 @@ function EditorPage() {
       sizes.push({ w: viewport.width, h: viewport.height });
 
       const tc = await page.getTextContent();
-      const boxes: TextBox[] = [];
       for (const it of tc.items as any[]) {
         if (!it.str || !it.str.trim()) continue;
         const tx = pdfjsLib.Util.transform(viewport.transform, it.transform);
-        const fontHeight = Math.hypot(tx[2], tx[3]);
-        const width = (it.width || 0) * viewport.scale;
-        const left = tx[4];
-        const top = tx[5] - fontHeight;
-        boxes.push({ x: left, y: top, w: width, h: fontHeight, size: fontHeight, str: it.str });
+        // tx[0..3] is the matrix, tx[4]/tx[5] is the position.
+        // Font size is the vertical scale of the matrix.
+        const fontSize = Math.hypot(tx[2], tx[3]);
+        const width = (it.width || it.str.length * fontSize * 0.5) * viewport.scale;
+        // tx[5] is the baseline Y. Top of text ≈ baseline - fontSize * 0.82
+        const top = tx[5] - fontSize * 0.82;
+        items.push({
+          id: `t-${i}-${items.length}`,
+          page: i - 1,
+          x: tx[4],
+          y: top,
+          width,
+          height: fontSize * 1.05,
+          fontSize,
+          originalStr: it.str,
+          str: it.str,
+        });
       }
-      allBoxes.push(boxes);
     }
+
     setPageImages(imgs);
     setPageSizes(sizes);
-    setPageTextBoxes(allBoxes);
+    setTextItems(items);
     setPageRotations(new Array(imgs.length).fill(0));
   }, []);
 
@@ -105,24 +130,34 @@ function EditorPage() {
     })();
   }, [fileId, navigate, renderPdf]);
 
+  function commitTextEdit(id: string, newText: string) {
+    setTextItems((items) =>
+      items.map((it) => (it.id === id ? { ...it, str: newText } : it)),
+    );
+  }
+
   function handleCanvasClick(e: React.MouseEvent) {
     if (!overlayRef.current) return;
+    if (tool === "select" || tool === "edit") return;
     const rect = overlayRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     if (tool === "text") {
       const text = prompt("Enter text:");
       if (!text) return;
-      setAnnotations((a) => [...a, { type: "text", page: currentPage, x, y, text, size: 16 }]);
+      setAnnotations((a) => [
+        ...a,
+        { id: crypto.randomUUID(), type: "text", page: currentPage, x, y, text, size: 16 },
+      ]);
     } else if (tool === "highlight") {
       setAnnotations((a) => [
         ...a,
-        { type: "highlight", page: currentPage, x, y: y - 8, w: 120, h: 16 },
+        { id: crypto.randomUUID(), type: "highlight", page: currentPage, x, y: y - 8, w: 120, h: 16 },
       ]);
     } else if (tool === "sign" && pendingSig) {
       setAnnotations((a) => [
         ...a,
-        { type: "image", page: currentPage, x, y, w: 140, h: 50, dataUrl: pendingSig },
+        { id: crypto.randomUUID(), type: "image", page: currentPage, x, y, w: 140, h: 50, dataUrl: pendingSig },
       ]);
     }
   }
@@ -139,6 +174,36 @@ function EditorPage() {
         pages[i].setRotation(degrees((current + rot) % 360));
       }
     });
+
+    // Apply text edits (only items whose str differs from originalStr)
+    for (const it of textItems) {
+      if (it.str === it.originalStr) continue;
+      const page = pages[it.page];
+      if (!page) continue;
+      const rendered = pageSizes[it.page];
+      if (!rendered) continue;
+      const { width: pw, height: ph } = page.getSize();
+      const sx = pw / rendered.w;
+      const sy = ph / rendered.h;
+
+      // Cover the original text with a white rectangle (slightly padded)
+      const pad = 2;
+      page.drawRectangle({
+        x: it.x * sx - pad,
+        y: ph - (it.y + it.height) * sy - pad,
+        width: it.width * sx + pad * 2,
+        height: it.height * sy + pad * 2,
+        color: rgb(1, 1, 1),
+      });
+      const size = it.fontSize * sy;
+      page.drawText(it.str, {
+        x: it.x * sx,
+        y: ph - it.y * sy - size,
+        size,
+        font,
+        color: rgb(0, 0, 0),
+      });
+    }
 
     for (const ann of annotations) {
       const page = pages[ann.page];
@@ -173,23 +238,6 @@ function EditorPage() {
           y: ph - (ann.y + ann.h) * sy,
           width: ann.w * sx,
           height: ann.h * sy,
-        });
-      } else if (ann.type === "edit") {
-        const pad = 2;
-        page.drawRectangle({
-          x: ann.x * sx - pad,
-          y: ph - (ann.y + ann.h) * sy - pad,
-          width: ann.w * sx + pad * 2,
-          height: ann.h * sy + pad * 2,
-          color: rgb(1, 1, 1),
-        });
-        const size = ann.size * sy;
-        page.drawText(ann.text, {
-          x: ann.x * sx,
-          y: ph - ann.y * sy - size,
-          size,
-          font,
-          color: rgb(0, 0, 0),
         });
       }
     }
@@ -290,6 +338,12 @@ function EditorPage() {
   const cursor =
     tool === "text" ? "text" : tool === "highlight" ? "crosshair" : tool === "sign" ? "copy" : "default";
 
+  const currentSize = pageSizes[currentPage];
+  const currentRotation = pageRotations[currentPage] || 0;
+  const editing = tool === "edit";
+  const pageTextItems = textItems.filter((t) => t.page === currentPage);
+  const modifiedCount = textItems.filter((t) => t.str !== t.originalStr).length;
+
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6">
       {showSig && (
@@ -309,7 +363,14 @@ function EditorPage() {
           <ArrowLeft className="size-4" />
           Back
         </Link>
-        <h1 className="truncate text-base font-medium">{fileName}</h1>
+        <h1 className="truncate text-base font-medium">
+          {fileName}
+          {modifiedCount > 0 && (
+            <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+              {modifiedCount} edit{modifiedCount > 1 ? "s" : ""}
+            </span>
+          )}
+        </h1>
         <div className="flex gap-2">
           <button
             onClick={handleSave}
@@ -333,7 +394,7 @@ function EditorPage() {
       {loading ? (
         <div className="grid h-96 place-items-center text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
-            <Loader2 className="size-4 animate-spin" /> Loading document…
+            <Loader2 className="size-4 animate-spin" /> Converting document for editing…
           </div>
         </div>
       ) : (
@@ -363,97 +424,52 @@ function EditorPage() {
           <main className="col-span-12 lg:col-span-8">
             {tool !== "select" && (
               <div className="mb-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-xs text-foreground">
-                {tool === "edit" && "Click any highlighted text box to edit it in place. Enter to save, Esc to cancel."}
+                {editing && "Click any text on the page and type to edit it in place. Click outside to save."}
                 {tool === "text" && "Click anywhere on the page to add new text."}
                 {tool === "highlight" && "Click to drop a yellow highlight."}
                 {tool === "sign" && "Click on the page to place your signature."}
               </div>
             )}
             <div className="overflow-auto rounded-2xl border border-border bg-stone-100 p-6">
-              {pageImages[currentPage] && (
+              {pageImages[currentPage] && currentSize && (
                 <div
                   ref={overlayRef}
                   onClick={handleCanvasClick}
-                  className="relative mx-auto inline-block bg-white shadow-xl"
-                  style={{ cursor }}
+                  className="relative mx-auto bg-white shadow-xl"
+                  style={{
+                    width: currentSize.w,
+                    height: currentSize.h,
+                    cursor,
+                    transform: currentRotation ? `rotate(${currentRotation}deg)` : undefined,
+                  }}
                 >
                   <img
                     src={pageImages[currentPage]}
                     alt=""
-                    style={{ transform: `rotate(${pageRotations[currentPage] || 0}deg)` }}
+                    width={currentSize.w}
+                    height={currentSize.h}
+                    draggable={false}
+                    style={{ display: "block", maxWidth: "none", userSelect: "none" }}
                   />
-                  {tool === "edit" &&
-                    (pageTextBoxes[currentPage] || []).map((b, i) => {
-                      const isEditing =
-                        editingBox?.page === currentPage && editingBox.idx === i;
-                      const minH = Math.max(b.h, 18);
-                      if (isEditing) {
-                        const commit = () => {
-                          const val = editingBox!.value;
-                          setAnnotations((a) => [
-                            ...a,
-                            {
-                              type: "edit",
-                              page: currentPage,
-                              x: b.x,
-                              y: b.y,
-                              w: Math.max(b.w, val.length * b.size * 0.5),
-                              h: b.h,
-                              size: b.size,
-                              text: val,
-                            },
-                          ]);
-                          setEditingBox(null);
-                        };
-                        return (
-                          <input
-                            key={`tb-${i}`}
-                            autoFocus
-                            value={editingBox.value}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) =>
-                              setEditingBox({ ...editingBox, value: e.target.value })
-                            }
-                            onBlur={commit}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                commit();
-                              } else if (e.key === "Escape") {
-                                setEditingBox(null);
-                              }
-                            }}
-                            className="absolute z-20 border border-primary bg-white px-1 font-sans text-black outline-none"
-                            style={{
-                              left: b.x - 2,
-                              top: b.y - 2,
-                              minWidth: b.w + 40,
-                              height: minH + 4,
-                              fontSize: b.size,
-                            }}
-                          />
-                        );
-                      }
-                      return (
-                        <button
-                          key={`tb-${i}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingBox({ page: currentPage, idx: i, value: b.str });
-                          }}
-                          className="absolute z-10 border border-dashed border-primary/70 bg-primary/10 hover:bg-primary/25"
-                          style={{ left: b.x, top: b.y, width: Math.max(b.w, 12), height: minH }}
-                          title={`Click to edit: ${b.str}`}
-                        />
-                      );
-                    })}
+
+                  {/* Editable text layer — one span per extracted text run */}
+                  {pageTextItems.map((item) => (
+                    <EditableTextRun
+                      key={item.id}
+                      item={item}
+                      editing={editing}
+                      onCommit={(v) => commitTextEdit(item.id, v)}
+                    />
+                  ))}
+
+                  {/* Free annotations */}
                   {annotations
                     .filter((a) => a.page === currentPage)
-                    .map((a, i) => {
+                    .map((a) => {
                       if (a.type === "text")
                         return (
                           <span
-                            key={i}
+                            key={a.id}
                             className="absolute font-sans text-black"
                             style={{ left: a.x, top: a.y, fontSize: a.size, pointerEvents: "none" }}
                           >
@@ -463,32 +479,14 @@ function EditorPage() {
                       if (a.type === "highlight")
                         return (
                           <div
-                            key={i}
+                            key={a.id}
                             className="absolute bg-yellow-300/40"
                             style={{ left: a.x, top: a.y, width: a.w, height: a.h, pointerEvents: "none" }}
                           />
                         );
-                      if (a.type === "edit")
-                        return (
-                          <div
-                            key={i}
-                            className="absolute flex items-center bg-white font-sans text-black"
-                            style={{
-                              left: a.x - 2,
-                              top: a.y - 2,
-                              width: a.w + 4,
-                              height: a.h + 4,
-                              fontSize: a.size,
-                              lineHeight: `${a.h}px`,
-                              pointerEvents: "none",
-                            }}
-                          >
-                            {a.text}
-                          </div>
-                        );
                       return (
                         <img
-                          key={i}
+                          key={a.id}
                           src={a.dataUrl}
                           alt=""
                           className="absolute"
@@ -509,9 +507,10 @@ function EditorPage() {
               <div className="mb-2 px-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                 Tools
               </div>
-              <ToolBtn icon={<Edit3 className="size-4" />} label="Edit text" active={tool === "edit"} onClick={() => setTool(tool === "edit" ? "select" : "edit")} />
-              <ToolBtn icon={<Type className="size-4" />} label="Add text" active={tool === "text"} onClick={() => setTool(tool === "text" ? "select" : "text")} />
-              <ToolBtn icon={<Highlighter className="size-4" />} label="Highlight" active={tool === "highlight"} onClick={() => setTool(tool === "highlight" ? "select" : "highlight")} />
+              <ToolBtn icon={<MousePointer2 className="size-4" />} label="Select" active={tool === "select"} onClick={() => setTool("select")} />
+              <ToolBtn icon={<Edit3 className="size-4" />} label="Edit text" active={tool === "edit"} onClick={() => setTool("edit")} />
+              <ToolBtn icon={<Type className="size-4" />} label="Add text" active={tool === "text"} onClick={() => setTool("text")} />
+              <ToolBtn icon={<Highlighter className="size-4" />} label="Highlight" active={tool === "highlight"} onClick={() => setTool("highlight")} />
               <ToolBtn icon={<PenTool className="size-4" />} label="Sign" active={tool === "sign"} onClick={() => setShowSig(true)} />
 
               <div className="my-3 h-px bg-border" />
@@ -538,12 +537,15 @@ function EditorPage() {
                 />
               </label>
 
-              {annotations.length > 0 && (
+              {(annotations.length > 0 || modifiedCount > 0) && (
                 <button
-                  onClick={() => setAnnotations([])}
+                  onClick={() => {
+                    setAnnotations([]);
+                    setTextItems((items) => items.map((it) => ({ ...it, str: it.originalStr })));
+                  }}
                   className="mt-3 w-full rounded-lg border border-border py-2 text-xs text-muted-foreground hover:bg-white"
                 >
-                  Clear annotations
+                  Reset all edits
                 </button>
               )}
             </div>
@@ -551,6 +553,85 @@ function EditorPage() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * A single editable text run rendered as an absolutely positioned contentEditable span.
+ * Its initial textContent is set once on mount via a ref so React never overwrites
+ * what the user types. On blur the new value is committed back to parent state.
+ */
+function EditableTextRun({
+  item,
+  editing,
+  onCommit,
+}: {
+  item: TextItem;
+  editing: boolean;
+  onCommit: (v: string) => void;
+}) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const lastSeenRef = useRef<string>(item.str);
+
+  // Initialize / sync DOM text only when the source value changes from outside
+  // (mount, reset, save round-trip) — never on every render.
+  useEffect(() => {
+    if (ref.current && ref.current.textContent !== item.str) {
+      ref.current.textContent = item.str;
+      lastSeenRef.current = item.str;
+    }
+  }, [item.str]);
+
+  const isModified = item.str !== item.originalStr;
+
+  return (
+    <span
+      ref={ref}
+      contentEditable={editing}
+      suppressContentEditableWarning
+      spellCheck={false}
+      onClick={(e) => {
+        if (editing) e.stopPropagation();
+      }}
+      onBlur={(e) => {
+        const v = e.currentTarget.textContent ?? "";
+        if (v !== lastSeenRef.current) {
+          lastSeenRef.current = v;
+          onCommit(v);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.currentTarget as HTMLSpanElement).blur();
+        }
+      }}
+      style={{
+        position: "absolute",
+        left: item.x,
+        top: item.y,
+        minWidth: item.width,
+        height: item.height,
+        fontSize: item.fontSize,
+        lineHeight: `${item.height}px`,
+        fontFamily: "Helvetica, Arial, sans-serif",
+        color: "#000",
+        // White background masks the rasterized original text underneath
+        background: editing || isModified ? "#fff" : "transparent",
+        // In edit mode, hide the rasterized text by painting white on top.
+        // The HTML text is visible on top of that background.
+        outline: editing ? "1px dashed rgba(59,130,246,0.5)" : isModified ? "1px solid rgba(59,130,246,0.4)" : "none",
+        padding: 0,
+        margin: 0,
+        whiteSpace: "pre",
+        cursor: editing ? "text" : "default",
+        pointerEvents: editing ? "auto" : "none",
+        // When NOT editing and unmodified, keep the HTML span invisible so the
+        // user sees the original rasterized text from the page image.
+        opacity: editing || isModified ? 1 : 0,
+        userSelect: editing ? "text" : "none",
+      }}
+    />
   );
 }
 
