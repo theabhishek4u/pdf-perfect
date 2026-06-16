@@ -606,6 +606,7 @@ function EditorPage() {
   const currentRotation = pageRotations[currentPage] || 0;
   const editing = tool === "edit";
   const pageTextItems = textItems.filter((t) => t.page === currentPage);
+  const activeItem = textItems.find((t) => t.id === activeTextId) || null;
   const modifiedCount = textItems.filter((t) => t.str !== t.originalStr).length;
 
   return (
