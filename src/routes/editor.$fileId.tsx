@@ -345,7 +345,7 @@ function EditorPage() {
   const modifiedCount = textItems.filter((t) => t.str !== t.originalStr).length;
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 py-6">
+    <div className="min-h-screen bg-stone-100">
       {showSig && (
         <SignaturePad
           onCancel={() => setShowSig(false)}
@@ -358,36 +358,42 @@ function EditorPage() {
         />
       )}
 
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <Link to="/dashboard" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" />
-          Back
-        </Link>
-        <h1 className="truncate text-base font-medium">
-          {fileName}
-          {modifiedCount > 0 && (
-            <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-              {modifiedCount} edit{modifiedCount > 1 ? "s" : ""}
-            </span>
-          )}
-        </h1>
-        <div className="flex gap-2">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 rounded-full border border-border bg-white px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+      {/* Top header */}
+      <div className="border-b border-border bg-white">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-6 py-3">
+          <Link
+            to="/dashboard"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
           >
-            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            Save
-          </button>
-          <button
-            onClick={handleDownload}
-            disabled={saving}
-            className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-accent disabled:opacity-50"
-          >
-            <Download className="size-4" />
-            Export
-          </button>
+            <ArrowLeft className="size-4" />
+            Back
+          </Link>
+          <h1 className="truncate text-center text-base font-medium">
+            {fileName}
+            {modifiedCount > 0 && (
+              <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                {modifiedCount} edit{modifiedCount > 1 ? "s" : ""}
+              </span>
+            )}
+          </h1>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 rounded-full border border-border bg-white px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              Save
+            </button>
+            <button
+              onClick={handleDownload}
+              disabled={saving}
+              className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-accent disabled:opacity-50"
+            >
+              <Download className="size-4" />
+              Export
+            </button>
+          </div>
         </div>
       </div>
 
@@ -398,133 +404,24 @@ function EditorPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-12 gap-4">
-          <aside className="col-span-12 lg:col-span-2">
-            <div className="rounded-2xl border border-border bg-white/40 p-3 backdrop-blur">
-              <div className="mb-2 px-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                Pages
-              </div>
-              <div className="flex max-h-[70vh] flex-col gap-2 overflow-y-auto lg:max-h-[80vh]">
-                {pageImages.map((src, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setCurrentPage(i)}
-                    className={`overflow-hidden rounded-lg border-2 transition-all ${
-                      i === currentPage ? "border-foreground" : "border-transparent hover:border-border"
-                    }`}
-                  >
-                    <img src={src} alt={`Page ${i + 1}`} className="w-full" />
-                    <div className="bg-white py-1 text-[10px] text-muted-foreground">{i + 1}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </aside>
-
-          <main className="col-span-12 lg:col-span-8">
-            {tool !== "select" && (
-              <div className="mb-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-xs text-foreground">
-                {editing && "Click any text on the page and type to edit it in place. Click outside to save."}
-                {tool === "text" && "Click anywhere on the page to add new text."}
-                {tool === "highlight" && "Click to drop a yellow highlight."}
-                {tool === "sign" && "Click on the page to place your signature."}
-              </div>
-            )}
-            <div className="overflow-auto rounded-2xl border border-border bg-stone-100 p-6">
-              {pageImages[currentPage] && currentSize && (
-                <div
-                  ref={overlayRef}
-                  onClick={handleCanvasClick}
-                  className="relative mx-auto bg-white shadow-xl"
-                  style={{
-                    width: currentSize.w,
-                    height: currentSize.h,
-                    cursor,
-                    transform: currentRotation ? `rotate(${currentRotation}deg)` : undefined,
-                  }}
-                >
-                  <img
-                    src={pageImages[currentPage]}
-                    alt=""
-                    width={currentSize.w}
-                    height={currentSize.h}
-                    draggable={false}
-                    style={{ display: "block", maxWidth: "none", userSelect: "none" }}
-                  />
-
-                  {/* Editable text layer — one span per extracted text run */}
-                  {pageTextItems.map((item) => (
-                    <EditableTextRun
-                      key={item.id}
-                      item={item}
-                      editing={editing}
-                      onCommit={(v) => commitTextEdit(item.id, v)}
-                    />
-                  ))}
-
-                  {/* Free annotations */}
-                  {annotations
-                    .filter((a) => a.page === currentPage)
-                    .map((a) => {
-                      if (a.type === "text")
-                        return (
-                          <span
-                            key={a.id}
-                            className="absolute font-sans text-black"
-                            style={{ left: a.x, top: a.y, fontSize: a.size, pointerEvents: "none" }}
-                          >
-                            {a.text}
-                          </span>
-                        );
-                      if (a.type === "highlight")
-                        return (
-                          <div
-                            key={a.id}
-                            className="absolute bg-yellow-300/40"
-                            style={{ left: a.x, top: a.y, width: a.w, height: a.h, pointerEvents: "none" }}
-                          />
-                        );
-                      return (
-                        <img
-                          key={a.id}
-                          src={a.dataUrl}
-                          alt=""
-                          className="absolute"
-                          style={{ left: a.x, top: a.y, width: a.w, height: a.h, pointerEvents: "none" }}
-                        />
-                      );
-                    })}
-                </div>
-              )}
-            </div>
-            <div className="mt-3 text-center font-mono text-xs text-muted-foreground">
-              Page {currentPage + 1} of {pageImages.length}
-            </div>
-          </main>
-
-          <aside className="col-span-12 lg:col-span-2">
-            <div className="space-y-2 rounded-2xl border border-border bg-white/40 p-3 backdrop-blur">
-              <div className="mb-2 px-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                Tools
-              </div>
-              <ToolBtn icon={<MousePointer2 className="size-4" />} label="Select" active={tool === "select"} onClick={() => setTool("select")} />
-              <ToolBtn icon={<Edit3 className="size-4" />} label="Edit text" active={tool === "edit"} onClick={() => setTool("edit")} />
-              <ToolBtn icon={<Type className="size-4" />} label="Add text" active={tool === "text"} onClick={() => setTool("text")} />
-              <ToolBtn icon={<Highlighter className="size-4" />} label="Highlight" active={tool === "highlight"} onClick={() => setTool("highlight")} />
-              <ToolBtn icon={<PenTool className="size-4" />} label="Sign" active={tool === "sign"} onClick={() => setShowSig(true)} />
-
-              <div className="my-3 h-px bg-border" />
-
-              <ToolBtn icon={<RotateCw className="size-4" />} label="Rotate page" onClick={rotateCurrent} />
-              <ToolBtn icon={<Scissors className="size-4" />} label="Extract page" onClick={handleSplitCurrent} />
-              <ToolBtn icon={<Trash2 className="size-4" />} label="Delete page" onClick={deleteCurrent} />
-
-              <div className="my-3 h-px bg-border" />
-
-              <label className="block">
-                <div className="flex cursor-pointer items-center gap-2 rounded-lg p-2 text-sm hover:bg-white">
+        <>
+          {/* Sejda-style horizontal tools bar */}
+          <div className="sticky top-0 z-20 border-b border-border bg-white shadow-sm">
+            <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-center gap-1 px-6 py-2">
+              <TopTool icon={<MousePointer2 className="size-4" />} label="Select" active={tool === "select"} onClick={() => setTool("select")} />
+              <TopTool icon={<Edit3 className="size-4" />} label="Edit text" active={tool === "edit"} onClick={() => setTool("edit")} />
+              <TopTool icon={<Type className="size-4" />} label="Add text" active={tool === "text"} onClick={() => setTool("text")} />
+              <TopTool icon={<Highlighter className="size-4" />} label="Highlight" active={tool === "highlight"} onClick={() => setTool("highlight")} />
+              <TopTool icon={<PenTool className="size-4" />} label="Sign" active={tool === "sign"} onClick={() => setShowSig(true)} />
+              <Divider />
+              <TopTool icon={<RotateCw className="size-4" />} label="Rotate" onClick={rotateCurrent} />
+              <TopTool icon={<Scissors className="size-4" />} label="Extract" onClick={handleSplitCurrent} />
+              <TopTool icon={<Trash2 className="size-4" />} label="Delete page" onClick={deleteCurrent} />
+              <Divider />
+              <label>
+                <div className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground hover:bg-muted">
                   <Plus className="size-4" />
-                  <span>Merge PDF</span>
+                  <span>Merge</span>
                 </div>
                 <input
                   type="file"
@@ -536,23 +433,150 @@ function EditorPage() {
                   }}
                 />
               </label>
-
               {(annotations.length > 0 || modifiedCount > 0) && (
-                <button
-                  onClick={() => {
-                    setAnnotations([]);
-                    setTextItems((items) => items.map((it) => ({ ...it, str: it.originalStr })));
-                  }}
-                  className="mt-3 w-full rounded-lg border border-border py-2 text-xs text-muted-foreground hover:bg-white"
-                >
-                  Reset all edits
-                </button>
+                <>
+                  <Divider />
+                  <button
+                    onClick={() => {
+                      setAnnotations([]);
+                      setTextItems((items) => items.map((it) => ({ ...it, str: it.originalStr })));
+                    }}
+                    className="rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
+                  >
+                    Reset
+                  </button>
+                </>
               )}
             </div>
-          </aside>
-        </div>
+
+            {pageImages.length > 0 && (
+              <div className="flex items-center justify-center gap-3 border-t border-border bg-stone-50 px-6 py-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                  disabled={currentPage === 0}
+                  className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-white disabled:opacity-40"
+                >
+                  ‹ Prev
+                </button>
+                <span className="font-mono text-xs text-muted-foreground">
+                  Page {currentPage + 1} of {pageImages.length}
+                </span>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(pageImages.length - 1, p + 1))}
+                  disabled={currentPage >= pageImages.length - 1}
+                  className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-white disabled:opacity-40"
+                >
+                  Next ›
+                </button>
+              </div>
+            )}
+          </div>
+
+          {tool !== "select" && (
+            <div className="mx-auto mt-3 max-w-[900px] rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-center text-xs text-foreground">
+              {editing && "Click any text on the page and type to edit it in place. Click outside to save."}
+              {tool === "text" && "Click anywhere on the page to add new text."}
+              {tool === "highlight" && "Click to drop a yellow highlight."}
+              {tool === "sign" && "Click on the page to place your signature."}
+            </div>
+          )}
+
+          <div className="flex justify-center px-4 py-6">
+            {pageImages[currentPage] && currentSize && (
+              <div
+                ref={overlayRef}
+                onClick={handleCanvasClick}
+                className="relative bg-white shadow-xl"
+                style={{
+                  width: currentSize.w,
+                  height: currentSize.h,
+                  cursor,
+                  transform: currentRotation ? `rotate(${currentRotation}deg)` : undefined,
+                }}
+              >
+                <img
+                  src={pageImages[currentPage]}
+                  alt=""
+                  width={currentSize.w}
+                  height={currentSize.h}
+                  draggable={false}
+                  style={{ display: "block", maxWidth: "none", userSelect: "none" }}
+                />
+
+                {pageTextItems.map((item) => (
+                  <EditableTextRun
+                    key={item.id}
+                    item={item}
+                    editing={editing}
+                    onCommit={(v) => commitTextEdit(item.id, v)}
+                  />
+                ))}
+
+                {annotations
+                  .filter((a) => a.page === currentPage)
+                  .map((a) => {
+                    if (a.type === "text")
+                      return (
+                        <span
+                          key={a.id}
+                          className="absolute font-sans text-black"
+                          style={{ left: a.x, top: a.y, fontSize: a.size, pointerEvents: "none" }}
+                        >
+                          {a.text}
+                        </span>
+                      );
+                    if (a.type === "highlight")
+                      return (
+                        <div
+                          key={a.id}
+                          className="absolute bg-yellow-300/40"
+                          style={{ left: a.x, top: a.y, width: a.w, height: a.h, pointerEvents: "none" }}
+                        />
+                      );
+                    return (
+                      <img
+                        key={a.id}
+                        src={a.dataUrl}
+                        alt=""
+                        className="absolute"
+                        style={{ left: a.x, top: a.y, width: a.w, height: a.h, pointerEvents: "none" }}
+                      />
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
+  );
+}
+
+function Divider() {
+  return <div className="mx-1 h-6 w-px bg-border" />;
+}
+
+function TopTool({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+        active ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
   );
 }
 
@@ -635,26 +659,3 @@ function EditableTextRun({
   );
 }
 
-function ToolBtn({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm transition-colors ${
-        active ? "bg-primary text-primary-foreground" : "hover:bg-white"
-      }`}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
-  );
-}
