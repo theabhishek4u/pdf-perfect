@@ -1451,14 +1451,19 @@ function EditableTextRun({
         fontWeight: item.fontWeight,
         fontStyle: item.fontStyle,
         color: `rgb(${item.color.r}, ${item.color.g}, ${item.color.b})`,
-        background: visible
-          ? `rgb(${item.background.r}, ${item.background.g}, ${item.background.b})`
-          : "transparent",
+        background: highlight
+          ? "rgba(250, 204, 21, 0.55)"
+          : visible
+            ? `rgb(${item.background.r}, ${item.background.g}, ${item.background.b})`
+            : "transparent",
         outline: active
           ? "1px solid rgba(37,99,235,0.75)"
-          : hover && editing
-            ? "1px dashed rgba(37,99,235,0.45)"
-            : "none",
+          : highlight
+            ? "1px solid rgba(234,179,8,0.9)"
+            : hover && editing
+              ? "1px dashed rgba(37,99,235,0.45)"
+              : "none",
+
         padding: 0,
         margin: 0,
         whiteSpace: "pre",
