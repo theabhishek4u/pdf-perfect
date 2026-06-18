@@ -1309,16 +1309,19 @@ function TopTool({
   label,
   active,
   onClick,
+  disabled,
 }: {
   icon: React.ReactNode;
   label: string;
   active?: boolean;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+      disabled={disabled}
+      className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
         active ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"
       }`}
     >
@@ -1327,6 +1330,7 @@ function TopTool({
     </button>
   );
 }
+
 
 /**
  * A single editable text run rendered as an absolutely positioned contentEditable span.
