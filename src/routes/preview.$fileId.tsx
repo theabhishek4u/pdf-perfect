@@ -27,16 +27,19 @@ function PreviewPage() {
     }
     setData(item);
     (async () => {
+      const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+      const scale = Math.min(3, Math.max(2, dpr * 1.75));
       const doc = await pdfjsLib.getDocument({ data: item.bytes.slice() }).promise;
       const imgs: string[] = [];
       for (let i = 1; i <= doc.numPages; i++) {
         const page = await doc.getPage(i);
-        const viewport = page.getViewport({ scale: 1.5 });
+        const viewport = page.getViewport({ scale });
         const canvas = document.createElement("canvas");
         canvas.width = viewport.width;
         canvas.height = viewport.height;
-        const ctx = canvas.getContext("2d")!;
+        const ctx = canvas.getContext("2d", { alpha: false })!;
         await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+        // PNG keeps text crisp; JPEG would blur fine glyph edges.
         imgs.push(canvas.toDataURL("image/png"));
         setPages([...imgs]);
       }
