@@ -31,8 +31,24 @@ import {
   Loader2,
   Edit3,
   MousePointer2,
+  Undo2,
+  Redo2,
+  Search,
+  Copy,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
+  ChevronUp,
+  ChevronDown,
+  CheckCircle2,
 } from "lucide-react";
 import { getPdf, updatePdf } from "@/lib/pdf-store";
+
+type HistorySnap = {
+  textItems: TextItem[];
+  annotations: Annotation[];
+  pageRotations: number[];
+};
 
 export const Route = createFileRoute("/editor/$fileId")({
   ssr: false,
