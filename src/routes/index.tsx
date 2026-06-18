@@ -250,7 +250,7 @@ function LandingPage() {
       {/* CTA */}
       <section className="mx-auto max-w-5xl px-6 pb-32">
         <div className="rounded-[2rem] bg-primary p-16 text-center text-primary-foreground shadow-2xl">
-          <h2 className="mb-6 text-4xl font-medium tracking-tight">
+          <h2 className="font-display mb-6 text-5xl font-light">
             Begin with a single document.
           </h2>
           <p className="mx-auto mb-8 max-w-md text-primary-foreground/70">
