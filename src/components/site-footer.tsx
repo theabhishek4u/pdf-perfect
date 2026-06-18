@@ -1,6 +1,6 @@
 export function SiteFooter() {
   return (
-    <footer className="border-t border-border bg-white/40 px-6 py-20">
+    <footer className="border-t border-border bg-card/30 px-5 py-14 sm:px-6 sm:py-20">
       <div className="mx-auto flex max-w-7xl flex-col gap-12 md:flex-row md:justify-between">
         <div className="max-w-xs">
           <span className="mb-6 block text-lg font-semibold tracking-tight">
