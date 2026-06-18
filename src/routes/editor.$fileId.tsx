@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   PDFDocument,
   StandardFonts,
@@ -746,10 +746,17 @@ function EditorPage() {
           target.tagName === "TEXTAREA" ||
           target.isContentEditable);
       const mod = e.ctrlKey || e.metaKey;
+      // Don't hijack Ctrl+Z/Y/F while user is typing inside a text field —
+      // let the browser's native behavior take over (native typing undo, etc).
       if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
+        if (inEditable) return;
         e.preventDefault();
         undo();
-      } else if (mod && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
+      } else if (
+        mod &&
+        (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))
+      ) {
+        if (inEditable) return;
         e.preventDefault();
         redo();
       } else if (mod && e.key.toLowerCase() === "s") {
@@ -765,35 +772,45 @@ function EditorPage() {
       } else if (!inEditable && (e.key === "ArrowRight" || e.key === "PageDown")) {
         setCurrentPage((p) => Math.min(pageImages.length - 1, p + 1));
       }
+
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [undo, redo, pageImages.length]);
 
-  // Auto-save edit state (textItems + annotations + rotations) to localStorage
-  // for crash recovery. Lightweight — no PDF rebuild.
+  // Auto-save edit state to localStorage for crash recovery. Debounced + de-duped
+  // so it doesn't fire while the user is just clicking / mousing around.
+  const lastSavedRef = useRef<string>("");
   useEffect(() => {
     if (loading) return;
     const t = setTimeout(() => {
       try {
-        const key = `pdf-editify-edits-${fileId}`;
-        localStorage.setItem(
-          key,
-          JSON.stringify({
-            textItems: textItems.filter((t) => t.str !== t.originalStr),
-            annotations,
-            pageRotations,
-            ts: Date.now(),
-          }),
-        );
+        const payload = JSON.stringify({
+          textItems: textItems
+            .filter((t) => t.str !== t.originalStr)
+            .map((t) => ({
+              id: t.id,
+              str: t.str,
+              color: t.color,
+              fontSize: t.fontSize,
+              fontWeight: t.fontWeight,
+              fontStyle: t.fontStyle,
+            })),
+          annotations,
+          pageRotations,
+        });
+        if (payload === lastSavedRef.current) return;
+        lastSavedRef.current = payload;
+        localStorage.setItem(`pdf-editify-edits-${fileId}`, payload);
         setAutoSaveAt(Date.now());
       } catch {
         /* quota or serialization issue — skip */
       }
-    }, 800);
+    }, 1500);
     return () => clearTimeout(t);
   }, [textItems, annotations, pageRotations, loading, fileId]);
+
 
   // Search matches
   const searchMatches = searchQ.trim()
@@ -1335,146 +1352,166 @@ function TopTool({
 /**
  * A single editable text run rendered as an absolutely positioned contentEditable span.
  */
-function EditableTextRun({
-  item,
-  editing,
-  active,
-  highlight,
-  onActivate,
-  onDeactivate,
-  onCommit,
-  onCancel,
-}: {
-  item: TextItem;
-  editing: boolean;
-  active: boolean;
-  highlight?: boolean;
-  onActivate: () => void;
-  onDeactivate: () => void;
-  onCommit: (v: string) => void;
-  onCancel: () => void;
-}) {
-  const ref = useRef<HTMLSpanElement | null>(null);
-  const lastSeenRef = useRef<string>(item.str);
-  const [hover, setHover] = useState(false);
+const EditableTextRun = React.memo(
+  function EditableTextRun({
+    item,
+    editing,
+    active,
+    highlight,
+    onActivate,
+    onDeactivate,
+    onCommit,
+    onCancel,
+  }: {
+    item: TextItem;
+    editing: boolean;
+    active: boolean;
+    highlight?: boolean;
+    onActivate: () => void;
+    onDeactivate: () => void;
+    onCommit: (v: string) => void;
+    onCancel: () => void;
+  }) {
+    const ref = useRef<HTMLSpanElement | null>(null);
+    const lastSeenRef = useRef<string>(item.str);
+    const pendingClickRef = useRef<{ x: number; y: number } | null>(null);
+    const [hover, setHover] = useState(false);
 
-  useEffect(() => {
-    if (ref.current && ref.current.textContent !== item.str) {
-      ref.current.textContent = item.str;
-      lastSeenRef.current = item.str;
-    }
-  }, [item.str]);
+    // Keep DOM text in sync with state (only when state changes — never while user is typing).
+    useEffect(() => {
+      if (ref.current && ref.current.textContent !== item.str) {
+        ref.current.textContent = item.str;
+        lastSeenRef.current = item.str;
+      }
+    }, [item.str]);
 
-  // Place caret at the click position instead of selecting everything.
-  function placeCaretAt(clientX: number, clientY: number) {
-    const el = ref.current;
-    if (!el) return;
-    type CaretFnDoc = Document & {
-      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-      caretRangeFromPoint?: (x: number, y: number) => Range | null;
-    };
-    const doc = document as CaretFnDoc;
-    let range: Range | null = null;
+    // When the run becomes active, focus the element and place the caret at the
+    // click position. Doing this in an effect (rather than rAF inside mousedown)
+    // guarantees the element is contentEditable=true before we focus it.
+    useEffect(() => {
+      if (!active || !ref.current) return;
+      const el = ref.current;
+      el.focus({ preventScroll: true });
+      const click = pendingClickRef.current;
+      pendingClickRef.current = null;
+      placeCaret(el, click);
+    }, [active]);
+
+    const isModified = item.str !== item.originalStr;
+    const visible = active || isModified || highlight;
+
+    return (
+      <span
+        ref={ref}
+        contentEditable={editing && active}
+        suppressContentEditableWarning
+        spellCheck={false}
+        onMouseEnter={() => editing && setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        onMouseDown={(e) => {
+          if (!editing) return;
+          e.stopPropagation();
+          // Remember the click point so the caret-placement effect can use it
+          // once active=true triggers a rerender with contentEditable enabled.
+          pendingClickRef.current = { x: e.clientX, y: e.clientY };
+          if (!active) {
+            e.preventDefault();
+            onActivate();
+          }
+        }}
+        onBlur={(e) => {
+          const v = e.currentTarget.textContent ?? "";
+          if (v !== lastSeenRef.current) {
+            lastSeenRef.current = v;
+            onCommit(v);
+          }
+          onDeactivate();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            (e.currentTarget as HTMLSpanElement).blur();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel();
+            (e.currentTarget as HTMLSpanElement).blur();
+          }
+        }}
+        style={{
+          position: "absolute",
+          left: item.x,
+          top: item.y,
+          minWidth: item.width,
+          height: item.height,
+          fontSize: item.fontSize,
+          lineHeight: `${item.height}px`,
+          fontFamily: item.fontFamily,
+          fontWeight: item.fontWeight,
+          fontStyle: item.fontStyle,
+          color: `rgb(${item.color.r}, ${item.color.g}, ${item.color.b})`,
+          background: highlight
+            ? "rgba(250, 204, 21, 0.55)"
+            : visible
+              ? `rgb(${item.background.r}, ${item.background.g}, ${item.background.b})`
+              : "transparent",
+          outline: active
+            ? "1px solid rgba(37,99,235,0.75)"
+            : highlight
+              ? "1px solid rgba(234,179,8,0.9)"
+              : hover && editing
+                ? "1px dashed rgba(37,99,235,0.45)"
+                : "none",
+          padding: 0,
+          margin: 0,
+          whiteSpace: "pre",
+          cursor: editing ? "text" : "default",
+          pointerEvents: editing ? "auto" : "none",
+          opacity: visible ? 1 : hover && editing ? 0.001 : 0,
+          userSelect: editing ? "text" : "none",
+        }}
+      />
+    );
+  },
+  // Only re-render when the props that actually affect rendering change.
+  // Callback identity is ignored — parents always pass fresh inline closures.
+  (a, b) =>
+    a.item === b.item &&
+    a.editing === b.editing &&
+    a.active === b.active &&
+    a.highlight === b.highlight,
+);
+
+function placeCaret(el: HTMLElement, click: { x: number; y: number } | null) {
+  type CaretFnDoc = Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+  const doc = document as CaretFnDoc;
+  let range: Range | null = null;
+  if (click) {
     if (typeof doc.caretRangeFromPoint === "function") {
-      range = doc.caretRangeFromPoint(clientX, clientY);
+      range = doc.caretRangeFromPoint(click.x, click.y);
     } else if (typeof doc.caretPositionFromPoint === "function") {
-      const pos = doc.caretPositionFromPoint(clientX, clientY);
+      const pos = doc.caretPositionFromPoint(click.x, click.y);
       if (pos) {
         range = document.createRange();
         range.setStart(pos.offsetNode, pos.offset);
         range.collapse(true);
       }
     }
-    if (!range) {
-      range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(false);
-    }
-    const sel = window.getSelection();
-    if (sel) {
-      sel.removeAllRanges();
-      sel.addRange(range);
-    }
   }
-
-  const isModified = item.str !== item.originalStr;
-  const visible = active || isModified || highlight;
-
-
-  return (
-    <span
-      ref={ref}
-      contentEditable={editing && active}
-      suppressContentEditableWarning
-      spellCheck={false}
-      onMouseEnter={() => editing && setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onMouseDown={(e) => {
-        if (!editing) return;
-        e.stopPropagation();
-        e.preventDefault();
-        onActivate();
-        const x = e.clientX;
-        const y = e.clientY;
-        requestAnimationFrame(() => {
-          ref.current?.focus();
-          placeCaretAt(x, y);
-        });
-      }}
-      onBlur={(e) => {
-        const v = e.currentTarget.textContent ?? "";
-        if (v !== lastSeenRef.current) {
-          lastSeenRef.current = v;
-          onCommit(v);
-        }
-        onDeactivate();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          (e.currentTarget as HTMLSpanElement).blur();
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          onCancel();
-          (e.currentTarget as HTMLSpanElement).blur();
-        }
-      }}
-      style={{
-        position: "absolute",
-        left: item.x,
-        top: item.y,
-        minWidth: item.width,
-        height: item.height,
-        fontSize: item.fontSize,
-        lineHeight: `${item.height}px`,
-        fontFamily: item.fontFamily,
-        fontWeight: item.fontWeight,
-        fontStyle: item.fontStyle,
-        color: `rgb(${item.color.r}, ${item.color.g}, ${item.color.b})`,
-        background: highlight
-          ? "rgba(250, 204, 21, 0.55)"
-          : visible
-            ? `rgb(${item.background.r}, ${item.background.g}, ${item.background.b})`
-            : "transparent",
-        outline: active
-          ? "1px solid rgba(37,99,235,0.75)"
-          : highlight
-            ? "1px solid rgba(234,179,8,0.9)"
-            : hover && editing
-              ? "1px dashed rgba(37,99,235,0.45)"
-              : "none",
-
-        padding: 0,
-        margin: 0,
-        whiteSpace: "pre",
-        cursor: editing ? "text" : "default",
-        pointerEvents: editing ? "auto" : "none",
-        opacity: visible ? 1 : hover && editing ? 0.001 : 0,
-        userSelect: editing ? "text" : "none",
-      }}
-    />
-  );
+  if (!range) {
+    range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+  }
+  const sel = window.getSelection();
+  if (sel) {
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
 }
+
 
 function FloatingTextToolbar({
   item,
