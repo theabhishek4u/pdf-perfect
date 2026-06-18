@@ -80,7 +80,10 @@ type Annotation =
 type PdfTextStyle = { fontFamily?: string; ascent?: number; descent?: number };
 type PdfTextContentItem = { str?: string; width?: number; transform: number[]; fontName: string };
 
-const RENDER_SCALE = 1.5;
+const RENDER_SCALE = Math.min(
+  3,
+  Math.max(1.75, (typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1) * 1.5),
+);
 
 function inferFontInfo(rawName: string) {
   const name = rawName.toLowerCase();
@@ -97,6 +100,11 @@ function inferFontInfo(rawName: string) {
   };
 }
 
+// Detect background + foreground color of a text run by sampling its bounding
+// box. Strategy: bucket pixels into a coarse color histogram, take the most
+// frequent bucket as the background, then average the pixels that lie farthest
+// from that background — those are the strokes of the glyphs. This works for
+// any text color (black, blue, red, white-on-dark, etc.).
 function sampleTextBackground(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -110,22 +118,48 @@ function sampleTextBackground(
   const sh = Math.max(1, Math.min(ctx.canvas.height - sy, Math.ceil(height)));
   try {
     const data = ctx.getImageData(sx, sy, sw, sh).data;
-    let br = 0, bg = 0, bb = 0, bc = 0;
-    let fr = 0, fg = 0, fb = 0, fc = 0;
+    const buckets = new Map<number, { r: number; g: number; b: number; n: number }>();
     for (let i = 0; i < data.length; i += 4) {
-      const sum = data[i] + data[i + 1] + data[i + 2];
-      if (sum > 560) {
-        br += data[i]; bg += data[i + 1]; bb += data[i + 2]; bc++;
-      } else if (sum < 380) {
-        fr += data[i]; fg += data[i + 1]; fb += data[i + 2]; fc++;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      // 5-bit-per-channel bucketing → 32^3 buckets
+      const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+      const cur = buckets.get(key);
+      if (cur) { cur.r += r; cur.g += g; cur.b += b; cur.n++; }
+      else buckets.set(key, { r, g, b, n: 1 });
+    }
+    // Background = most common bucket.
+    let bg = { r: 255, g: 255, b: 255, n: 0 };
+    for (const v of buckets.values()) if (v.n > bg.n) bg = v;
+    const background: RGB = {
+      r: Math.round(bg.r / bg.n),
+      g: Math.round(bg.g / bg.n),
+      b: Math.round(bg.b / bg.n),
+    };
+    // Foreground = average of pixels farthest from background (top ~12%).
+    const dists: number[] = [];
+    for (let i = 0; i < data.length; i += 4) {
+      const dr = data[i] - background.r;
+      const dg = data[i + 1] - background.g;
+      const db = data[i + 2] - background.b;
+      dists.push(dr * dr + dg * dg + db * db);
+    }
+    const sorted = [...dists].sort((a, b) => b - a);
+    const threshold = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.12))];
+    const minThreshold = 40 * 40; // ignore anti-aliasing noise
+    let fr = 0, fg = 0, fb = 0, fn = 0;
+    for (let p = 0, i = 0; i < data.length; i += 4, p++) {
+      if (dists[p] >= Math.max(threshold, minThreshold)) {
+        fr += data[i]; fg += data[i + 1]; fb += data[i + 2]; fn++;
       }
     }
-    const background = bc
-      ? { r: Math.round(br / bc), g: Math.round(bg / bc), b: Math.round(bb / bc) }
-      : { r: 255, g: 255, b: 255 };
-    const color = fc
-      ? { r: Math.round(fr / fc), g: Math.round(fg / fc), b: Math.round(fb / fc) }
-      : { r: 0, g: 0, b: 0 };
+    const color: RGB = fn
+      ? { r: Math.round(fr / fn), g: Math.round(fg / fn), b: Math.round(fb / fn) }
+      // Fallback: pick the channel-wise opposite of the background.
+      : {
+          r: background.r > 128 ? 0 : 255,
+          g: background.g > 128 ? 0 : 255,
+          b: background.b > 128 ? 0 : 255,
+        };
     return { background, color };
   } catch {
     return { background: { r: 255, g: 255, b: 255 }, color: { r: 0, g: 0, b: 0 } };
