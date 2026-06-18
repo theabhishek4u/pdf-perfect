@@ -746,10 +746,17 @@ function EditorPage() {
           target.tagName === "TEXTAREA" ||
           target.isContentEditable);
       const mod = e.ctrlKey || e.metaKey;
+      // Don't hijack Ctrl+Z/Y/F while user is typing inside a text field —
+      // let the browser's native behavior take over (native typing undo, etc).
       if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
+        if (inEditable) return;
         e.preventDefault();
         undo();
-      } else if (mod && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
+      } else if (
+        mod &&
+        (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))
+      ) {
+        if (inEditable) return;
         e.preventDefault();
         redo();
       } else if (mod && e.key.toLowerCase() === "s") {
@@ -765,6 +772,7 @@ function EditorPage() {
       } else if (!inEditable && (e.key === "ArrowRight" || e.key === "PageDown")) {
         setCurrentPage((p) => Math.min(pageImages.length - 1, p + 1));
       }
+
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
