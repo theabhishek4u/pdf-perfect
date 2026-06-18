@@ -151,7 +151,7 @@ function LandingPage() {
           <span className="mb-4 block font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             Pricing
           </span>
-          <h2 className="text-4xl font-medium tracking-tight">
+          <h2 className="font-display text-5xl font-light">
             Simple tiers for serious work.
           </h2>
         </div>
