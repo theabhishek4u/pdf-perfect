@@ -14,7 +14,6 @@ import {
 import fontkit from "@pdf-lib/fontkit";
 import { pdfjsLib } from "@/lib/pdfjs-setup";
 import { SignaturePad } from "@/components/signature-pad";
-import { setPreview } from "@/lib/preview-store";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -23,7 +22,6 @@ import {
   PenTool,
   Download,
   Save,
-  Eye,
   Scissors,
   Plus,
   RotateCw,
@@ -638,17 +636,6 @@ function EditorPage() {
     setSaving(false);
   }
 
-  async function handleApplyPreview() {
-    setSaving(true);
-    try {
-      const out = await buildEditedPdf();
-      setPreview(fileId, out, fileName);
-      navigate({ to: "/preview/$fileId", params: { fileId } });
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-    setSaving(false);
-  }
 
   async function handleSave() {
     setSaving(true);
@@ -936,14 +923,6 @@ function EditorPage() {
             >
               {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
               Save
-            </button>
-            <button
-              onClick={handleApplyPreview}
-              disabled={saving}
-              className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-accent disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
-              Apply &amp; Preview
             </button>
             <button
               onClick={handleDownload}
@@ -1317,21 +1296,6 @@ function EditorPage() {
             </div>
           </div>
 
-          <div className="sticky bottom-0 z-10 border-t border-border bg-white/95 backdrop-blur">
-            <div className="mx-auto flex max-w-[1600px] items-center justify-center gap-3 px-6 py-3">
-              <button
-                onClick={handleApplyPreview}
-                disabled={saving}
-                className="flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow-md hover:bg-accent disabled:opacity-50"
-              >
-                {saving ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
-                Apply &amp; Preview
-              </button>
-              <span className="text-xs text-muted-foreground">
-                Review the final output, then download.
-              </span>
-            </div>
-          </div>
 
         </>
       )}
