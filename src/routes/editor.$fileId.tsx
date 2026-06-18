@@ -456,7 +456,10 @@ function EditorPage() {
         if (!psName || map.has(psName.toLowerCase())) continue;
         try {
           const bytes = decodePDFRawStream(fontFileRef).decode();
-          const embedded = await doc.embedFont(bytes, { subset: true });
+          // subset:false so the re-embedded font has the full glyph set —
+          // edits can use characters that weren't in the original subset
+          // without falling back to Helvetica.
+          const embedded = await doc.embedFont(bytes, { subset: false });
           map.set(psName.toLowerCase(), embedded);
         } catch {
           /* skip unsupported font formats (Type1, CFF without OpenType wrapper, etc.) */
