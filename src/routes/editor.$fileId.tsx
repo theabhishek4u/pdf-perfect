@@ -1115,15 +1115,6 @@ function EditorPage() {
             )}
           </div>
 
-          {tool !== "select" && (
-            <div className="mx-auto mt-3 max-w-[900px] rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-center text-xs text-foreground">
-              {editing &&
-                "Click any text on the page and type to edit it in place. Click outside to save. (Ctrl+Z to undo)"}
-              {tool === "text" && "Click anywhere on the page to add new text."}
-              {tool === "highlight" && "Click to drop a yellow highlight."}
-              {tool === "sign" && "Click on the page to place your signature."}
-            </div>
-          )}
 
           <div className="flex">
             {/* Thumbnail sidebar */}
