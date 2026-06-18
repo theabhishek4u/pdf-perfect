@@ -526,8 +526,35 @@ function EditorPage() {
       }
       const coverWidth = Math.max(it.width * sx, editedWidth);
       const pad = Math.max(0.35, size * 0.04);
+      const editLeft = it.x * sx - pad;
+      const editRight = editLeft + coverWidth + pad * 2;
+
+      // Cover same-line neighboring runs that fall within the new horizontal
+      // span. PDFs often split a single visual word (e.g. a heading) into
+      // multiple TextItems; if the user edits only one, the others would
+      // remain visible as ghost fragments behind/around the new text.
+      for (const other of textItems) {
+        if (other === it) continue;
+        if (other.page !== it.page) continue;
+        // Only auto-cover unedited neighbors — don't clobber other user edits.
+        if (other.str !== other.originalStr) continue;
+        // Same baseline (within ~half the line height).
+        if (Math.abs(other.y - it.y) > Math.max(it.height, other.height) * 0.5) continue;
+        const oLeft = other.x * sx;
+        const oRight = (other.x + other.width) * sx;
+        if (oRight < editLeft || oLeft > editRight) continue;
+        const oPad = Math.max(0.35, other.fontSize * sy * 0.04);
+        page.drawRectangle({
+          x: oLeft - oPad,
+          y: ph - (other.y + other.height) * sy - oPad,
+          width: other.width * sx + oPad * 2,
+          height: other.height * sy + oPad * 2,
+          color: rgb(other.background.r / 255, other.background.g / 255, other.background.b / 255),
+        });
+      }
+
       page.drawRectangle({
-        x: it.x * sx - pad,
+        x: editLeft,
         y: ph - (it.y + it.height) * sy - pad,
         width: coverWidth + pad * 2,
         height: it.height * sy + pad * 2,
