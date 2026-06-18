@@ -396,11 +396,13 @@ function EditorPage() {
     if (tool === "text") {
       const text = prompt("Enter text:");
       if (!text) return;
+      pushHistory();
       setAnnotations((a) => [
         ...a,
         { id: crypto.randomUUID(), type: "text", page: currentPage, x, y, text, size: 16 },
       ]);
     } else if (tool === "highlight") {
+      pushHistory();
       setAnnotations((a) => [
         ...a,
         {
@@ -414,6 +416,7 @@ function EditorPage() {
         },
       ]);
     } else if (tool === "sign" && pendingSig) {
+      pushHistory();
       setAnnotations((a) => [
         ...a,
         {
@@ -429,6 +432,7 @@ function EditorPage() {
       ]);
     }
   }
+
 
   async function extractOriginalFonts(doc: PDFDocument): Promise<Map<string, PDFFont>> {
     const map = new Map<string, PDFFont>();
