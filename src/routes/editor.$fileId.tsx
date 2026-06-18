@@ -221,8 +221,50 @@ function EditorPage() {
   const [showSig, setShowSig] = useState(false);
   const [pendingSig, setPendingSig] = useState<string | null>(null);
   const [activeTextId, setActiveTextId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [searchIdx, setSearchIdx] = useState(0);
+  const [past, setPast] = useState<HistorySnap[]>([]);
+  const [future, setFuture] = useState<HistorySnap[]>([]);
+  const [autoSaveAt, setAutoSaveAt] = useState<number | null>(null);
+  const [draggingPage, setDraggingPage] = useState<number | null>(null);
 
   const overlayRef = useRef<HTMLDivElement>(null);
+  const stateRef = useRef<HistorySnap>({ textItems: [], annotations: [], pageRotations: [] });
+  useEffect(() => {
+    stateRef.current = { textItems, annotations, pageRotations };
+  }, [textItems, annotations, pageRotations]);
+
+  const pushHistory = useCallback(() => {
+    setPast((p) => [...p.slice(-49), stateRef.current]);
+    setFuture([]);
+  }, []);
+
+  const undo = useCallback(() => {
+    setPast((p) => {
+      if (!p.length) return p;
+      const prev = p[p.length - 1];
+      setFuture((f) => [stateRef.current, ...f].slice(0, 50));
+      setTextItems(prev.textItems);
+      setAnnotations(prev.annotations);
+      setPageRotations(prev.pageRotations);
+      return p.slice(0, -1);
+    });
+  }, []);
+
+  const redo = useCallback(() => {
+    setFuture((f) => {
+      if (!f.length) return f;
+      const next = f[0];
+      setPast((p) => [...p, stateRef.current].slice(-50));
+      setTextItems(next.textItems);
+      setAnnotations(next.annotations);
+      setPageRotations(next.pageRotations);
+      return f.slice(1);
+    });
+  }, []);
+
 
   const renderPdf = useCallback(async (buf: Uint8Array) => {
     const doc = await pdfjsLib.getDocument({ data: buf.slice() }).promise;
