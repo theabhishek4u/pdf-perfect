@@ -289,25 +289,30 @@ function PricingCard({
 }) {
   return (
     <div
-      className={`flex flex-col rounded-[2rem] p-10 ${
+      className={`relative flex flex-col rounded-[2rem] p-10 transition-all ${
         highlight
-          ? "scale-105 bg-primary text-primary-foreground shadow-2xl"
-          : "border border-border bg-white/30 backdrop-blur"
+          ? "bg-primary text-primary-foreground shadow-editorial md:scale-[1.03]"
+          : "border border-border bg-white/60 backdrop-blur hover:bg-white"
       }`}
     >
+      {highlight && (
+        <span className="absolute right-6 top-6 rounded-full bg-white/10 px-3 py-1 font-mono text-[9px] uppercase tracking-widest text-primary-foreground/70">
+          Most popular
+        </span>
+      )}
       <span
-        className={`mb-4 font-mono text-xs uppercase tracking-widest ${
+        className={`mb-8 font-mono text-[10px] uppercase tracking-[0.2em] ${
           highlight ? "text-primary-foreground/60" : "text-muted-foreground"
         }`}
       >
         {tier}
       </span>
-      <div className="mb-6 text-4xl font-medium">
+      <div className="font-display mb-10 text-5xl font-light">
         {price}
         {suffix && (
           <span
-            className={`text-lg font-normal ${
-              highlight ? "text-primary-foreground/60" : "text-muted-foreground"
+            className={`ml-1 text-lg font-light ${
+              highlight ? "text-primary-foreground/50" : "text-muted-foreground"
             }`}
           >
             {suffix}
@@ -315,20 +320,23 @@ function PricingCard({
         )}
       </div>
       <ul
-        className={`mb-10 flex-grow space-y-3 text-sm ${
+        className={`mb-12 flex-grow space-y-4 text-sm ${
           highlight ? "text-primary-foreground/80" : "text-muted-foreground"
         }`}
       >
         {features.map((f) => (
-          <li key={f}>{f}</li>
+          <li key={f} className="flex items-start gap-2">
+            <span className={`mt-1.5 size-1 rounded-full ${highlight ? "bg-primary-foreground/40" : "bg-foreground/30"}`} />
+            {f}
+          </li>
         ))}
       </ul>
       <Link
         to={href}
-        className={`w-full rounded-xl py-3 text-center font-medium transition-all ${
+        className={`w-full rounded-xl py-3.5 text-center text-sm font-medium transition-all ${
           highlight
             ? "bg-paper text-ink hover:bg-white"
-            : "border border-foreground hover:bg-foreground hover:text-background"
+            : "border border-border bg-white hover:border-foreground"
         }`}
       >
         {cta}
