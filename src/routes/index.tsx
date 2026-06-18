@@ -127,7 +127,7 @@ function LandingPage() {
       <section className="border-y border-border bg-white/20 py-20">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-12 px-6 md:flex-row">
           <div className="max-w-md">
-            <h2 className="mb-4 text-2xl font-medium tracking-tight">
+            <h2 className="font-display mb-4 text-3xl font-light">
               Bank-grade security as the default.
             </h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
