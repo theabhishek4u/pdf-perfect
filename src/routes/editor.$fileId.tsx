@@ -1339,6 +1339,7 @@ function EditableTextRun({
   item,
   editing,
   active,
+  highlight,
   onActivate,
   onDeactivate,
   onCommit,
@@ -1347,6 +1348,7 @@ function EditableTextRun({
   item: TextItem;
   editing: boolean;
   active: boolean;
+  highlight?: boolean;
   onActivate: () => void;
   onDeactivate: () => void;
   onCommit: (v: string) => void;
