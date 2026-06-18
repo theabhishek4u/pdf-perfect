@@ -779,29 +779,38 @@ function EditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [undo, redo, pageImages.length]);
 
-  // Auto-save edit state (textItems + annotations + rotations) to localStorage
-  // for crash recovery. Lightweight — no PDF rebuild.
+  // Auto-save edit state to localStorage for crash recovery. Debounced + de-duped
+  // so it doesn't fire while the user is just clicking / mousing around.
+  const lastSavedRef = useRef<string>("");
   useEffect(() => {
     if (loading) return;
     const t = setTimeout(() => {
       try {
-        const key = `pdf-editify-edits-${fileId}`;
-        localStorage.setItem(
-          key,
-          JSON.stringify({
-            textItems: textItems.filter((t) => t.str !== t.originalStr),
-            annotations,
-            pageRotations,
-            ts: Date.now(),
-          }),
-        );
+        const payload = JSON.stringify({
+          textItems: textItems
+            .filter((t) => t.str !== t.originalStr)
+            .map((t) => ({
+              id: t.id,
+              str: t.str,
+              color: t.color,
+              fontSize: t.fontSize,
+              fontWeight: t.fontWeight,
+              fontStyle: t.fontStyle,
+            })),
+          annotations,
+          pageRotations,
+        });
+        if (payload === lastSavedRef.current) return;
+        lastSavedRef.current = payload;
+        localStorage.setItem(`pdf-editify-edits-${fileId}`, payload);
         setAutoSaveAt(Date.now());
       } catch {
         /* quota or serialization issue — skip */
       }
-    }, 800);
+    }, 1500);
     return () => clearTimeout(t);
   }, [textItems, annotations, pageRotations, loading, fileId]);
+
 
   // Search matches
   const searchMatches = searchQ.trim()
