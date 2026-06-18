@@ -103,21 +103,21 @@ function LandingPage() {
           <span className="mb-4 block font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             The toolkit
           </span>
-          <h2 className="text-3xl font-medium tracking-tight sm:text-4xl">
+          <h2 className="font-display text-4xl font-light sm:text-5xl">
             Every action you need, none you don't.
           </h2>
         </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-3xl border border-border bg-border md:grid-cols-4">
           {tools.map((t) => (
             <div
               key={t.n}
-              className="rounded-3xl border border-border bg-white/40 p-7 transition-colors hover:bg-white"
+              className="group bg-white/80 p-8 transition-all hover:bg-white"
             >
-              <div className="mb-6 flex size-10 items-center justify-center rounded-xl bg-accent/5 font-mono text-xs">
+              <div className="mb-6 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                 {t.n}
               </div>
-              <h3 className="mb-2 font-medium">{t.title}</h3>
-              <p className="text-sm text-muted-foreground">{t.desc}</p>
+              <h3 className="mb-3 text-base font-medium tracking-tight">{t.title}</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">{t.desc}</p>
             </div>
           ))}
         </div>
