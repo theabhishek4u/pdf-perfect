@@ -1,23 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
-import {
-  Upload,
-  FileText,
-  Star,
-  Trash2,
-  Search,
-  Sparkles,
-  ArrowLeft,
-} from "lucide-react";
-import {
-  addPdf,
-  deletePdf,
-  listPdfs,
-  updatePdf,
-  type PdfRecord,
-} from "@/lib/pdf-store";
+import { Upload, ArrowLeft } from "lucide-react";
+import { addPdf } from "@/lib/pdf-store";
 
 export const Route = createFileRoute("/dashboard")({
   component: DashboardPage,
@@ -25,25 +11,8 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function DashboardPage() {
-  const [files, setFiles] = useState<PdfRecord[]>([]);
-  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [query, setQuery] = useState("");
   const navigate = useNavigate();
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      setFiles(await listPdfs());
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   const onDrop = useCallback(
     async (accepted: File[]) => {
@@ -66,11 +35,9 @@ function DashboardPage() {
       if (firstId) {
         toast.success("Opening editor…");
         navigate({ to: "/editor/$fileId", params: { fileId: firstId } });
-      } else {
-        refresh();
       }
     },
-    [refresh, navigate],
+    [navigate],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -78,22 +45,6 @@ function DashboardPage() {
     accept: { "application/pdf": [".pdf"] },
     multiple: true,
   });
-
-  async function handleDelete(f: PdfRecord) {
-    if (!confirm(`Delete ${f.name}?`)) return;
-    await deletePdf(f.id);
-    toast.success("Deleted");
-    refresh();
-  }
-
-  async function toggleFav(f: PdfRecord) {
-    await updatePdf(f.id, { is_favorite: !f.is_favorite });
-    refresh();
-  }
-
-  const filtered = files.filter((f) =>
-    f.name.toLowerCase().includes(query.toLowerCase()),
-  );
 
   return (
     <div className="min-h-screen">
@@ -127,7 +78,7 @@ function DashboardPage() {
 
         <div
           {...getRootProps()}
-          className={`mb-10 cursor-pointer rounded-3xl border-2 border-dashed p-12 text-center transition-all ${
+          className={`cursor-pointer rounded-3xl border-2 border-dashed p-12 text-center transition-all ${
             isDragActive
               ? "border-foreground bg-white"
               : "border-border bg-white/40 hover:bg-white/70"
@@ -146,69 +97,6 @@ function DashboardPage() {
             PDF only · Up to 50MB per file
           </p>
         </div>
-
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex flex-1 items-center gap-2 rounded-xl border border-border bg-white/60 px-4 py-2.5 backdrop-blur">
-            <Search className="size-4 text-muted-foreground" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search files…"
-              className="flex-1 bg-transparent text-sm outline-none"
-            />
-          </div>
-          <span className="font-mono text-xs text-muted-foreground">
-            {filtered.length} {filtered.length === 1 ? "file" : "files"}
-          </span>
-        </div>
-
-        {loading ? (
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-40 animate-pulse rounded-2xl bg-white/40" />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="rounded-3xl border border-border bg-white/40 p-16 text-center">
-            <Sparkles className="mx-auto mb-4 size-8 text-muted-foreground" />
-            <h3 className="font-medium">No documents yet</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Upload your first PDF to get started.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((f) => (
-              <div
-                key={f.id}
-                className="group rounded-2xl border border-border bg-white/60 p-5 backdrop-blur transition-all hover:bg-white"
-              >
-                <div className="mb-4 flex items-start justify-between">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-accent/5">
-                    <FileText className="size-5" />
-                  </div>
-                  <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <button onClick={() => toggleFav(f)} className="rounded-lg p-1.5 hover:bg-muted">
-                      <Star className={`size-4 ${f.is_favorite ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`} />
-                    </button>
-                    <button onClick={() => handleDelete(f)} className="rounded-lg p-1.5 hover:bg-muted">
-                      <Trash2 className="size-4 text-muted-foreground" />
-                    </button>
-                  </div>
-                </div>
-                <Link to="/editor/$fileId" params={{ fileId: f.id }} className="block">
-                  <div className="mb-1 truncate font-medium" title={f.name}>
-                    {f.name}
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{(f.size_bytes / 1024).toFixed(0)} KB</span>
-                    <span>{new Date(f.created_at).toLocaleDateString()}</span>
-                  </div>
-                </Link>
-              </div>
-            ))}
-          </div>
-        )}
       </main>
     </div>
   );
