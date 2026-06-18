@@ -63,9 +63,9 @@ function LandingPage() {
           <span className="mb-6 block font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             Intelligence in format
           </span>
-          <h1 className="mb-8 text-balance text-5xl font-medium tracking-tight sm:text-6xl md:text-7xl">
+          <h1 className="font-display mb-8 text-balance text-5xl font-light leading-[1.05] sm:text-6xl md:text-7xl">
             The editorial standard for{" "}
-            <span className="font-serif-italic">intelligent</span> documents.
+            <span className="font-serif-italic font-medium">intelligent</span> documents.
           </h1>
           <p className="mx-auto mb-10 max-w-[55ch] text-pretty text-lg leading-relaxed text-muted-foreground sm:text-xl">
             Transcend basic editing. An AI-augmented workspace designed for clarity,
@@ -103,21 +103,21 @@ function LandingPage() {
           <span className="mb-4 block font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             The toolkit
           </span>
-          <h2 className="text-3xl font-medium tracking-tight sm:text-4xl">
+          <h2 className="font-display text-4xl font-light sm:text-5xl">
             Every action you need, none you don't.
           </h2>
         </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-3xl border border-border bg-border md:grid-cols-4">
           {tools.map((t) => (
             <div
               key={t.n}
-              className="rounded-3xl border border-border bg-white/40 p-7 transition-colors hover:bg-white"
+              className="group bg-white/80 p-8 transition-all hover:bg-white"
             >
-              <div className="mb-6 flex size-10 items-center justify-center rounded-xl bg-accent/5 font-mono text-xs">
+              <div className="mb-6 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                 {t.n}
               </div>
-              <h3 className="mb-2 font-medium">{t.title}</h3>
-              <p className="text-sm text-muted-foreground">{t.desc}</p>
+              <h3 className="mb-3 text-base font-medium tracking-tight">{t.title}</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">{t.desc}</p>
             </div>
           ))}
         </div>
@@ -127,7 +127,7 @@ function LandingPage() {
       <section className="border-y border-border bg-white/20 py-20">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-12 px-6 md:flex-row">
           <div className="max-w-md">
-            <h2 className="mb-4 text-2xl font-medium tracking-tight">
+            <h2 className="font-display mb-4 text-3xl font-light">
               Bank-grade security as the default.
             </h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
@@ -151,7 +151,7 @@ function LandingPage() {
           <span className="mb-4 block font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             Pricing
           </span>
-          <h2 className="text-4xl font-medium tracking-tight">
+          <h2 className="font-display text-5xl font-light">
             Simple tiers for serious work.
           </h2>
         </div>
@@ -225,7 +225,7 @@ function LandingPage() {
           <span className="mb-4 block font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             FAQ
           </span>
-          <h2 className="text-4xl font-medium tracking-tight">
+          <h2 className="font-display text-5xl font-light">
             Questions, answered.
           </h2>
         </div>
@@ -250,7 +250,7 @@ function LandingPage() {
       {/* CTA */}
       <section className="mx-auto max-w-5xl px-6 pb-32">
         <div className="rounded-[2rem] bg-primary p-16 text-center text-primary-foreground shadow-2xl">
-          <h2 className="mb-6 text-4xl font-medium tracking-tight">
+          <h2 className="font-display mb-6 text-5xl font-light">
             Begin with a single document.
           </h2>
           <p className="mx-auto mb-8 max-w-md text-primary-foreground/70">
@@ -289,25 +289,30 @@ function PricingCard({
 }) {
   return (
     <div
-      className={`flex flex-col rounded-[2rem] p-10 ${
+      className={`relative flex flex-col rounded-[2rem] p-10 transition-all ${
         highlight
-          ? "scale-105 bg-primary text-primary-foreground shadow-2xl"
-          : "border border-border bg-white/30 backdrop-blur"
+          ? "bg-primary text-primary-foreground shadow-editorial md:scale-[1.03]"
+          : "border border-border bg-white/60 backdrop-blur hover:bg-white"
       }`}
     >
+      {highlight && (
+        <span className="absolute right-6 top-6 rounded-full bg-white/10 px-3 py-1 font-mono text-[9px] uppercase tracking-widest text-primary-foreground/70">
+          Most popular
+        </span>
+      )}
       <span
-        className={`mb-4 font-mono text-xs uppercase tracking-widest ${
+        className={`mb-8 font-mono text-[10px] uppercase tracking-[0.2em] ${
           highlight ? "text-primary-foreground/60" : "text-muted-foreground"
         }`}
       >
         {tier}
       </span>
-      <div className="mb-6 text-4xl font-medium">
+      <div className="font-display mb-10 text-5xl font-light">
         {price}
         {suffix && (
           <span
-            className={`text-lg font-normal ${
-              highlight ? "text-primary-foreground/60" : "text-muted-foreground"
+            className={`ml-1 text-lg font-light ${
+              highlight ? "text-primary-foreground/50" : "text-muted-foreground"
             }`}
           >
             {suffix}
@@ -315,20 +320,23 @@ function PricingCard({
         )}
       </div>
       <ul
-        className={`mb-10 flex-grow space-y-3 text-sm ${
+        className={`mb-12 flex-grow space-y-4 text-sm ${
           highlight ? "text-primary-foreground/80" : "text-muted-foreground"
         }`}
       >
         {features.map((f) => (
-          <li key={f}>{f}</li>
+          <li key={f} className="flex items-start gap-2">
+            <span className={`mt-1.5 size-1 rounded-full ${highlight ? "bg-primary-foreground/40" : "bg-foreground/30"}`} />
+            {f}
+          </li>
         ))}
       </ul>
       <Link
         to={href}
-        className={`w-full rounded-xl py-3 text-center font-medium transition-all ${
+        className={`w-full rounded-xl py-3.5 text-center text-sm font-medium transition-all ${
           highlight
             ? "bg-paper text-ink hover:bg-white"
-            : "border border-foreground hover:bg-foreground hover:text-background"
+            : "border border-border bg-white hover:border-foreground"
         }`}
       >
         {cta}

@@ -63,39 +63,46 @@ function DashboardPage() {
         </div>
       </nav>
 
-      <main className="mx-auto max-w-7xl px-6 py-10">
-        <div className="mb-10 animate-reveal">
-          <span className="mb-2 block font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+      <main className="mx-auto max-w-5xl px-6 py-16">
+        <div className="mb-12 animate-reveal">
+          <span className="mb-3 block font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             Workspace
           </span>
-          <h1 className="text-4xl font-medium tracking-tight">
-            Your <span className="font-serif-italic">documents</span>
+          <h1 className="font-display text-5xl font-light leading-[1.05] sm:text-6xl">
+            Your <span className="font-serif-italic font-medium">documents</span>
           </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground">
             Files are stored privately in your browser. Nothing is uploaded to a server.
           </p>
         </div>
 
-        <div
-          {...getRootProps()}
-          className={`cursor-pointer rounded-3xl border-2 border-dashed p-12 text-center transition-all ${
-            isDragActive
-              ? "border-foreground bg-white"
-              : "border-border bg-white/40 hover:bg-white/70"
-          }`}
-        >
-          <input {...getInputProps()} />
-          <Upload className="mx-auto mb-4 size-8 text-muted-foreground" />
-          <p className="text-base font-medium">
-            {uploading
-              ? "Uploading…"
-              : isDragActive
-                ? "Drop PDFs here"
-                : "Drag PDFs here, or click to browse"}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            PDF only · Up to 50MB per file
-          </p>
+        <div className="rounded-3xl border border-border bg-white/70 p-4 shadow-editorial backdrop-blur sm:p-6">
+          <div className="relative group">
+            <div className="pointer-events-none absolute -inset-1 rounded-2xl bg-gradient-to-r from-stone-100 to-stone-50 opacity-25 blur transition duration-700 group-hover:opacity-60" />
+            <div
+              {...getRootProps()}
+              className={`relative cursor-pointer rounded-2xl border-2 border-dashed p-16 text-center transition-all ${
+                isDragActive
+                  ? "border-foreground bg-white"
+                  : "border-border bg-white/40 hover:border-foreground/40 hover:bg-white"
+              }`}
+            >
+              <input {...getInputProps()} />
+              <div className="mx-auto mb-5 flex size-12 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-border">
+                <Upload className="size-5 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium">
+                {uploading
+                  ? "Uploading…"
+                  : isDragActive
+                    ? "Drop PDFs here"
+                    : "Drag PDFs here, or click to browse"}
+              </p>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                PDF only · Up to 50MB per file · Stored locally
+              </p>
+            </div>
+          </div>
         </div>
       </main>
     </div>
