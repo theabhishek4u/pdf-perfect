@@ -370,18 +370,22 @@ function EditorPage() {
   }, [fileId, navigate, renderPdf]);
 
   function commitTextEdit(id: string, newText: string) {
+    pushHistory();
     setTextItems((items) => items.map((it) => (it.id === id ? { ...it, str: newText } : it)));
   }
 
   function updateTextStyle(id: string, patch: Partial<TextItem>) {
+    pushHistory();
     setTextItems((items) => items.map((it) => (it.id === id ? { ...it, ...patch } : it)));
   }
 
   function resetTextItem(id: string) {
+    pushHistory();
     setTextItems((items) =>
       items.map((it) => (it.id === id ? { ...it, str: it.originalStr } : it)),
     );
   }
+
 
   function handleCanvasClick(e: React.MouseEvent) {
     if (!overlayRef.current) return;
