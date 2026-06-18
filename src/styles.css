@@ -175,6 +175,15 @@
   .font-serif-italic {
     font-family: var(--font-serif);
     font-style: italic;
-    font-weight: 600;
+    font-weight: 500;
+  }
+  .font-display {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+  }
+  .shadow-editorial {
+    box-shadow: 0 32px 64px -16px oklch(0.18 0.015 260 / 0.08),
+      0 8px 16px -8px oklch(0.18 0.015 260 / 0.04);
   }
 }
