@@ -85,6 +85,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "PDF Perfect is a modern, AI-powered SaaS web application for comprehensive PDF editing and management." },
       { property: "og:description", content: "PDF Perfect is a modern, AI-powered SaaS web application for comprehensive PDF editing and management." },
       { name: "twitter:description", content: "PDF Perfect is a modern, AI-powered SaaS web application for comprehensive PDF editing and management." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/59b154fe-c416-4f83-b467-1cf2b10f2675/id-preview-25bf94c1--01bc7229-b27b-44df-a4d4-a6d245b6980d.lovable.app-1781754944402.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/59b154fe-c416-4f83-b467-1cf2b10f2675/id-preview-25bf94c1--01bc7229-b27b-44df-a4d4-a6d245b6980d.lovable.app-1781754944402.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -92,7 +94,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=JetBrains+Mono:wght@400;500&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,600;1,700&family=JetBrains+Mono:wght@400;500&display=swap",
       },
     ],
   }),
