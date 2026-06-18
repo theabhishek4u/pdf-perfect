@@ -224,7 +224,7 @@ function EditorPage() {
       const canvas = document.createElement("canvas");
       canvas.width = viewport.width;
       canvas.height = viewport.height;
-      const ctx = canvas.getContext("2d")!;
+      const ctx = canvas.getContext("2d", { alpha: false })!;
       await page.render({ canvasContext: ctx, viewport, canvas }).promise;
       imgs.push(canvas.toDataURL("image/png"));
       sizes.push({ w: viewport.width, h: viewport.height });
