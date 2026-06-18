@@ -671,6 +671,7 @@ function EditorPage() {
   }
 
   function rotateCurrent() {
+    pushHistory();
     setPageRotations((r) => {
       const n = [...r];
       n[currentPage] = (n[currentPage] + 90) % 360;
@@ -684,6 +685,7 @@ function EditorPage() {
       return;
     }
     if (!confirm(`Delete page ${currentPage + 1}?`)) return;
+    pushHistory();
     const src = await PDFDocument.load(pdfBytes);
     src.removePage(currentPage);
     const bytes = await src.save();
@@ -692,6 +694,119 @@ function EditorPage() {
     setAnnotations((a) => a.filter((x) => x.page !== currentPage));
     setCurrentPage((p) => Math.max(0, p - 1));
   }
+
+  async function duplicatePage(idx: number) {
+    if (!pdfBytes) return;
+    setSaving(true);
+    try {
+      pushHistory();
+      const src = await PDFDocument.load(pdfBytes);
+      const [copy] = await src.copyPages(src, [idx]);
+      src.insertPage(idx + 1, copy);
+      const bytes = await src.save();
+      setPdfBytes(bytes);
+      await renderPdf(bytes);
+      toast.success(`Page ${idx + 1} duplicated`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+    setSaving(false);
+  }
+
+  async function reorderPages(from: number, to: number) {
+    if (!pdfBytes || from === to) return;
+    setSaving(true);
+    try {
+      pushHistory();
+      const src = await PDFDocument.load(pdfBytes);
+      const order = Array.from({ length: src.getPageCount() }, (_, i) => i);
+      const [moved] = order.splice(from, 1);
+      order.splice(to, 0, moved);
+      const out = await PDFDocument.create();
+      const copied = await out.copyPages(src, order);
+      copied.forEach((p) => out.addPage(p));
+      const bytes = await out.save();
+      setPdfBytes(bytes);
+      await renderPdf(bytes);
+      setCurrentPage(to);
+      toast.success("Page moved");
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+    setSaving(false);
+  }
+
+  // Keyboard shortcuts: Undo/Redo/Save/Search/Page nav
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const inEditable =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (mod && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
+        e.preventDefault();
+        redo();
+      } else if (mod && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        handleSave();
+      } else if (mod && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setSearchOpen(true);
+      } else if (!inEditable && e.key === "Escape") {
+        setSearchOpen(false);
+      } else if (!inEditable && (e.key === "ArrowLeft" || e.key === "PageUp")) {
+        setCurrentPage((p) => Math.max(0, p - 1));
+      } else if (!inEditable && (e.key === "ArrowRight" || e.key === "PageDown")) {
+        setCurrentPage((p) => Math.min(pageImages.length - 1, p + 1));
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undo, redo, pageImages.length]);
+
+  // Auto-save edit state (textItems + annotations + rotations) to localStorage
+  // for crash recovery. Lightweight — no PDF rebuild.
+  useEffect(() => {
+    if (loading) return;
+    const t = setTimeout(() => {
+      try {
+        const key = `pdf-editify-edits-${fileId}`;
+        localStorage.setItem(
+          key,
+          JSON.stringify({
+            textItems: textItems.filter((t) => t.str !== t.originalStr),
+            annotations,
+            pageRotations,
+            ts: Date.now(),
+          }),
+        );
+        setAutoSaveAt(Date.now());
+      } catch {
+        /* quota or serialization issue — skip */
+      }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [textItems, annotations, pageRotations, loading, fileId]);
+
+  // Search matches
+  const searchMatches = searchQ.trim()
+    ? textItems
+        .map((it, i) => ({ it, i }))
+        .filter(({ it }) => it.str.toLowerCase().includes(searchQ.toLowerCase()))
+    : [];
+  useEffect(() => {
+    if (!searchMatches.length) return;
+    const m = searchMatches[Math.min(searchIdx, searchMatches.length - 1)];
+    if (m && m.it.page !== currentPage) setCurrentPage(m.it.page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchIdx, searchQ]);
 
   const cursor =
     tool === "text"
@@ -708,6 +823,9 @@ function EditorPage() {
   const pageTextItems = textItems.filter((t) => t.page === currentPage);
   const activeItem = textItems.find((t) => t.id === activeTextId) || null;
   const modifiedCount = textItems.filter((t) => t.str !== t.originalStr).length;
+  const canUndo = past.length > 0;
+  const canRedo = future.length > 0;
+
 
   return (
     <div className="min-h-screen bg-stone-100">
