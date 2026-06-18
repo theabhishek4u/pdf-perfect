@@ -63,9 +63,9 @@ function LandingPage() {
           <span className="mb-6 block font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             Intelligence in format
           </span>
-          <h1 className="mb-8 text-balance text-5xl font-medium tracking-tight sm:text-6xl md:text-7xl">
+          <h1 className="font-display mb-8 text-balance text-5xl font-light leading-[1.05] sm:text-6xl md:text-7xl">
             The editorial standard for{" "}
-            <span className="font-serif-italic">intelligent</span> documents.
+            <span className="font-serif-italic font-medium">intelligent</span> documents.
           </h1>
           <p className="mx-auto mb-10 max-w-[55ch] text-pretty text-lg leading-relaxed text-muted-foreground sm:text-xl">
             Transcend basic editing. An AI-augmented workspace designed for clarity,
