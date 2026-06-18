@@ -1398,7 +1398,8 @@ function EditableTextRun({
   }
 
   const isModified = item.str !== item.originalStr;
-  const visible = active || isModified;
+  const visible = active || isModified || highlight;
+
 
   return (
     <span
