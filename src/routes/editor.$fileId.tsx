@@ -843,19 +843,40 @@ function EditorPage() {
 
       {/* Top header */}
       <div className="border-b border-border bg-white">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-6 py-3">
-          <Link
-            to="/dashboard"
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-            Back
-          </Link>
-          <h1 className="truncate text-center text-base font-medium">
-            {fileName}
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-6 py-3">
+          <div className="flex items-center gap-2">
+            <Link
+              to="/dashboard"
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="size-4" />
+              Back
+            </Link>
+            <button
+              onClick={() => setSidebarOpen((v) => !v)}
+              className="ml-2 grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted"
+              title={sidebarOpen ? "Hide pages" : "Show pages"}
+            >
+              {sidebarOpen ? (
+                <PanelLeftClose className="size-4" />
+              ) : (
+                <PanelLeftOpen className="size-4" />
+              )}
+            </button>
+          </div>
+          <h1 className="flex min-w-0 items-center justify-center gap-2 truncate text-center text-base font-medium">
+            <span className="truncate">{fileName}</span>
             {modifiedCount > 0 && (
-              <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+              <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
                 {modifiedCount} edit{modifiedCount > 1 ? "s" : ""}
+              </span>
+            )}
+            {autoSaveAt && (
+              <span
+                className="hidden items-center gap-1 text-xs text-emerald-600 sm:flex"
+                title={`Auto-saved ${new Date(autoSaveAt).toLocaleTimeString()}`}
+              >
+                <CheckCircle2 className="size-3" /> Auto-saved
               </span>
             )}
           </h1>
@@ -864,6 +885,7 @@ function EditorPage() {
               onClick={handleSave}
               disabled={saving}
               className="flex items-center gap-2 rounded-full border border-border bg-white px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+              title="Save (Ctrl+S)"
             >
               {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
               Save
@@ -898,7 +920,20 @@ function EditorPage() {
         <>
           {/* Sejda-style horizontal tools bar */}
           <div className="sticky top-0 z-20 border-b border-border bg-white shadow-sm">
-            <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-center gap-1 px-6 py-2">
+            <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-center gap-1 px-6 py-2">
+              <TopTool
+                icon={<Undo2 className="size-4" />}
+                label="Undo"
+                onClick={undo}
+                disabled={!canUndo}
+              />
+              <TopTool
+                icon={<Redo2 className="size-4" />}
+                label="Redo"
+                onClick={redo}
+                disabled={!canRedo}
+              />
+              <Divider />
               <TopTool
                 icon={<MousePointer2 className="size-4" />}
                 label="Select"
@@ -931,6 +966,12 @@ function EditorPage() {
               />
               <Divider />
               <TopTool
+                icon={<Search className="size-4" />}
+                label="Find"
+                active={searchOpen}
+                onClick={() => setSearchOpen((v) => !v)}
+              />
+              <TopTool
                 icon={<RotateCw className="size-4" />}
                 label="Rotate"
                 onClick={rotateCurrent}
@@ -939,6 +980,11 @@ function EditorPage() {
                 icon={<Scissors className="size-4" />}
                 label="Extract"
                 onClick={handleSplitCurrent}
+              />
+              <TopTool
+                icon={<Copy className="size-4" />}
+                label="Duplicate"
+                onClick={() => duplicatePage(currentPage)}
               />
               <TopTool
                 icon={<Trash2 className="size-4" />}
@@ -966,6 +1012,7 @@ function EditorPage() {
                   <Divider />
                   <button
                     onClick={() => {
+                      pushHistory();
                       setAnnotations([]);
                       setTextItems((items) => items.map((it) => ({ ...it, str: it.originalStr })));
                     }}
@@ -976,6 +1023,57 @@ function EditorPage() {
                 </>
               )}
             </div>
+
+            {searchOpen && (
+              <div className="flex items-center justify-center gap-2 border-t border-border bg-stone-50 px-6 py-2">
+                <Search className="size-4 text-muted-foreground" />
+                <input
+                  autoFocus
+                  value={searchQ}
+                  onChange={(e) => {
+                    setSearchQ(e.target.value);
+                    setSearchIdx(0);
+                  }}
+                  placeholder="Find in document…"
+                  className="h-8 w-72 rounded-md border border-border bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                <span className="font-mono text-xs text-muted-foreground">
+                  {searchMatches.length
+                    ? `${Math.min(searchIdx + 1, searchMatches.length)} / ${searchMatches.length}`
+                    : searchQ
+                      ? "0 / 0"
+                      : ""}
+                </span>
+                <button
+                  onClick={() => setSearchIdx((i) => Math.max(0, i - 1))}
+                  disabled={!searchMatches.length}
+                  className="grid size-7 place-items-center rounded hover:bg-white disabled:opacity-40"
+                  title="Previous"
+                >
+                  <ChevronUp className="size-4" />
+                </button>
+                <button
+                  onClick={() =>
+                    setSearchIdx((i) => Math.min(searchMatches.length - 1, i + 1))
+                  }
+                  disabled={!searchMatches.length}
+                  className="grid size-7 place-items-center rounded hover:bg-white disabled:opacity-40"
+                  title="Next"
+                >
+                  <ChevronDown className="size-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    setSearchOpen(false);
+                    setSearchQ("");
+                  }}
+                  className="grid size-7 place-items-center rounded text-muted-foreground hover:bg-white"
+                  title="Close (Esc)"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            )}
 
             {pageImages.length > 0 && (
               <div className="flex items-center justify-center gap-3 border-t border-border bg-stone-50 px-6 py-2">
@@ -1003,78 +1101,169 @@ function EditorPage() {
           {tool !== "select" && (
             <div className="mx-auto mt-3 max-w-[900px] rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-center text-xs text-foreground">
               {editing &&
-                "Click any text on the page and type to edit it in place. Click outside to save."}
+                "Click any text on the page and type to edit it in place. Click outside to save. (Ctrl+Z to undo)"}
               {tool === "text" && "Click anywhere on the page to add new text."}
               {tool === "highlight" && "Click to drop a yellow highlight."}
               {tool === "sign" && "Click on the page to place your signature."}
             </div>
           )}
 
-          <div className="flex justify-center px-4 py-6">
-            {pageImages[currentPage] && currentSize && (
-              <div
-                ref={overlayRef}
-                onClick={handleCanvasClick}
-                className="relative bg-white shadow-xl"
-                style={{
-                  width: currentSize.w,
-                  height: currentSize.h,
-                  cursor,
-                  transform: currentRotation ? `rotate(${currentRotation}deg)` : undefined,
-                }}
-              >
-                <img
-                  src={pageImages[currentPage]}
-                  alt=""
-                  width={currentSize.w}
-                  height={currentSize.h}
-                  draggable={false}
-                  style={{ display: "block", maxWidth: "none", userSelect: "none" }}
-                />
-
-                {pageTextItems.map((item) => (
-                  <EditableTextRun
-                    key={item.id}
-                    item={item}
-                    editing={editing}
-                    active={activeTextId === item.id}
-                    onActivate={() => setActiveTextId(item.id)}
-                    onDeactivate={() => setActiveTextId((id) => (id === item.id ? null : id))}
-                    onCommit={(v) => commitTextEdit(item.id, v)}
-                    onCancel={() => {
-                      resetTextItem(item.id);
-                      setActiveTextId(null);
-                    }}
-                  />
-                ))}
-
-                {editing && activeItem && activeItem.page === currentPage && (
-                  <FloatingTextToolbar
-                    item={activeItem}
-                    containerWidth={currentSize.w}
-                    onChange={(patch) => updateTextStyle(activeItem.id, patch)}
-                    onReset={() => resetTextItem(activeItem.id)}
-                  />
-                )}
-
-                {annotations
-                  .filter((a) => a.page === currentPage)
-                  .map((a) => {
-                    if (a.type === "text")
-                      return (
-                        <span
-                          key={a.id}
-                          className="absolute font-sans text-black"
-                          style={{ left: a.x, top: a.y, fontSize: a.size, pointerEvents: "none" }}
-                        >
-                          {a.text}
+          <div className="flex">
+            {/* Thumbnail sidebar */}
+            {sidebarOpen && (
+              <aside className="sticky top-[112px] hidden h-[calc(100vh-112px)] w-48 shrink-0 overflow-y-auto border-r border-border bg-white/70 px-2 py-3 backdrop-blur md:block">
+                <div className="mb-2 px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Pages · drag to reorder
+                </div>
+                <div className="flex flex-col gap-2">
+                  {pageImages.map((src, idx) => (
+                    <div
+                      key={idx}
+                      draggable
+                      onDragStart={() => setDraggingPage(idx)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => {
+                        if (draggingPage !== null && draggingPage !== idx) {
+                          reorderPages(draggingPage, idx);
+                        }
+                        setDraggingPage(null);
+                      }}
+                      onDragEnd={() => setDraggingPage(null)}
+                      onClick={() => setCurrentPage(idx)}
+                      className={`group relative cursor-pointer rounded-md border-2 p-1 transition-all ${
+                        currentPage === idx
+                          ? "border-primary bg-primary/5"
+                          : "border-transparent hover:border-border hover:bg-white"
+                      } ${draggingPage === idx ? "opacity-40" : ""}`}
+                    >
+                      <img
+                        src={src}
+                        alt={`Page ${idx + 1}`}
+                        className="w-full rounded-sm bg-white shadow-sm"
+                        draggable={false}
+                      />
+                      <div className="mt-1 flex items-center justify-between px-1">
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {idx + 1}
                         </span>
-                      );
-                    if (a.type === "highlight")
+                        <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              duplicatePage(idx);
+                            }}
+                            className="grid size-5 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                            title="Duplicate"
+                          >
+                            <Copy className="size-3" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCurrentPage(idx);
+                              setTimeout(deleteCurrent, 0);
+                            }}
+                            className="grid size-5 place-items-center rounded text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                            title="Delete"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </aside>
+            )}
+
+            <div className="flex flex-1 justify-center px-4 py-6">
+              {pageImages[currentPage] && currentSize && (
+                <div
+                  ref={overlayRef}
+                  onClick={handleCanvasClick}
+                  className="relative bg-white shadow-xl"
+                  style={{
+                    width: currentSize.w,
+                    height: currentSize.h,
+                    cursor,
+                    transform: currentRotation ? `rotate(${currentRotation}deg)` : undefined,
+                  }}
+                >
+                  <img
+                    src={pageImages[currentPage]}
+                    alt=""
+                    width={currentSize.w}
+                    height={currentSize.h}
+                    draggable={false}
+                    style={{ display: "block", maxWidth: "none", userSelect: "none" }}
+                  />
+
+                  {pageTextItems.map((item) => {
+                    const isMatch =
+                      searchQ.trim() &&
+                      item.str.toLowerCase().includes(searchQ.toLowerCase());
+                    return (
+                      <EditableTextRun
+                        key={item.id}
+                        item={item}
+                        editing={editing}
+                        active={activeTextId === item.id}
+                        highlight={!!isMatch}
+                        onActivate={() => setActiveTextId(item.id)}
+                        onDeactivate={() =>
+                          setActiveTextId((id) => (id === item.id ? null : id))
+                        }
+                        onCommit={(v) => commitTextEdit(item.id, v)}
+                        onCancel={() => {
+                          resetTextItem(item.id);
+                          setActiveTextId(null);
+                        }}
+                      />
+                    );
+                  })}
+
+                  {editing && activeItem && activeItem.page === currentPage && (
+                    <FloatingTextToolbar
+                      item={activeItem}
+                      containerWidth={currentSize.w}
+                      onChange={(patch) => updateTextStyle(activeItem.id, patch)}
+                      onReset={() => resetTextItem(activeItem.id)}
+                    />
+                  )}
+
+                  {annotations
+                    .filter((a) => a.page === currentPage)
+                    .map((a) => {
+                      if (a.type === "text")
+                        return (
+                          <span
+                            key={a.id}
+                            className="absolute font-sans text-black"
+                            style={{ left: a.x, top: a.y, fontSize: a.size, pointerEvents: "none" }}
+                          >
+                            {a.text}
+                          </span>
+                        );
+                      if (a.type === "highlight")
+                        return (
+                          <div
+                            key={a.id}
+                            className="absolute bg-yellow-300/40"
+                            style={{
+                              left: a.x,
+                              top: a.y,
+                              width: a.w,
+                              height: a.h,
+                              pointerEvents: "none",
+                            }}
+                          />
+                        );
                       return (
-                        <div
+                        <img
                           key={a.id}
-                          className="absolute bg-yellow-300/40"
+                          src={a.dataUrl}
+                          alt=""
+                          className="absolute"
                           style={{
                             left: a.x,
                             top: a.y,
@@ -1084,28 +1273,14 @@ function EditorPage() {
                           }}
                         />
                       );
-                    return (
-                      <img
-                        key={a.id}
-                        src={a.dataUrl}
-                        alt=""
-                        className="absolute"
-                        style={{
-                          left: a.x,
-                          top: a.y,
-                          width: a.w,
-                          height: a.h,
-                          pointerEvents: "none",
-                        }}
-                      />
-                    );
-                  })}
-              </div>
-            )}
+                    })}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="sticky bottom-0 z-10 border-t border-border bg-white/95 backdrop-blur">
-            <div className="mx-auto flex max-w-[1400px] items-center justify-center gap-3 px-6 py-3">
+            <div className="mx-auto flex max-w-[1600px] items-center justify-center gap-3 px-6 py-3">
               <button
                 onClick={handleApplyPreview}
                 disabled={saving}
@@ -1119,6 +1294,7 @@ function EditorPage() {
               </span>
             </div>
           </div>
+
         </>
       )}
     </div>
